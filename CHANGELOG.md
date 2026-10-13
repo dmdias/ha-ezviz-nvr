@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.1
+
+- Responsive camera grid: `columns` is the maximum; tiles keep a usable size and wrap
+  to fewer columns (one on phones) instead of shrinking
+
 ## 0.1.0
 
 First release.

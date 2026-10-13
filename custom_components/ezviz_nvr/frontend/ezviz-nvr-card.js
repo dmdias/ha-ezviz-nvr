@@ -6,10 +6,10 @@
  * a live / playback player and a 24 h timeline of the recordings on the NVR disk.
  *
  *   type: custom:ezviz-nvr-card
- *   columns: 2          # optional, camera grid columns
+ *   columns: 2          # optional, maximum camera grid columns (tiles wrap on narrow screens)
  */
 
-const CARD_VERSION = "0.1.0";
+const CARD_VERSION = "0.1.1";
 const DOMAIN = "ezviz_nvr";
 
 const TEXT = {
@@ -170,7 +170,7 @@ class EzvizNvrCard extends HTMLElement {
       })
       .join("");
     return `<div class="head"><b>EZVIZ NVR</b>${this._diskBar()}</div>
-      <div class="grid" style="grid-template-columns:repeat(${cols},1fr)">${tiles}</div>`;
+      <div class="grid" style="--cols:${cols}">${tiles}</div>`;
   }
 
   _playerView() {
@@ -334,7 +334,9 @@ const STYLES = `
   .disk { margin-left:auto; display:flex; align-items:center; gap:8px; font-size:13px; color:var(--muted); }
   .disk .bar { width:120px; height:7px; background:#3a4254; border-radius:4px; overflow:hidden; }
   .disk .bar i { display:block; height:100%; background:linear-gradient(90deg,#5fd3a8,#3d8bfd); }
-  .grid { display:grid; gap:10px; }
+  /* Up to --cols columns, each at least ~260px wide: tiles wrap instead of shrinking */
+  .grid { display:grid; gap:10px; grid-template-columns:repeat(auto-fill, minmax(max(260px, calc((100% - (var(--cols) - 1) * 10px) / var(--cols))), 1fr)); }
+  @media (max-width: 600px) { .grid { grid-template-columns:1fr; } ha-card { padding:10px; } .head { gap:8px; } .disk { margin-left:0; width:100%; } }
   .tile { position:relative; padding:0; border:none; border-radius:12px; overflow:hidden; background:var(--panel); cursor:pointer; color:var(--text); font-family:inherit; aspect-ratio:16/9; }
   .snap { width:100%; height:100%; object-fit:cover; display:block; }
   .snap.off { display:flex; align-items:center; justify-content:center; color:var(--muted); font-size:14px; }

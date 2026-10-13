@@ -103,7 +103,7 @@ to add. Edit a dashboard → **Add card** → **EZVIZ NVR**, or use YAML:
 
 ```yaml
 type: custom:ezviz-nvr-card
-columns: 3   # optional, grid columns (default 2)
+columns: 3   # optional, maximum grid columns (default 2); tiles wrap on narrow screens
 ```
 
 It looks best in a view of type **Panel**.
