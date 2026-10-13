@@ -1,0 +1,44 @@
+name: Validate
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 4 * * 1"
+
+jobs:
+  hacs:
+    name: HACS validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: hacs/action@main
+        with:
+          category: integration
+          # Not listed in home-assistant/brands
+          ignore: brands
+
+  hassfest:
+    name: Hassfest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: home-assistant/actions/hassfest@master
+
+  checks:
+    name: Syntax and version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: node --check custom_components/ezviz_nvr/frontend/ezviz-nvr-card.js
+      - run: python3 -m py_compile custom_components/ezviz_nvr/*.py
+      - name: Integration, card and manifest versions match
+        run: |
+          manifest=$(python3 -c "import json;print(json.load(open('custom_components/ezviz_nvr/manifest.json'))['version'])")
+          const=$(grep -oP 'VERSION: Final = "\K[^"]+' custom_components/ezviz_nvr/const.py)
+          card=$(grep -oP 'CARD_VERSION = "\K[^"]+' custom_components/ezviz_nvr/frontend/ezviz-nvr-card.js)
+          echo "manifest=$manifest const=$const card=$card"
+          [ "$manifest" = "$const" ] && [ "$manifest" = "$card" ]

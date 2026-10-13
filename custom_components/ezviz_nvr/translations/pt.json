@@ -1,0 +1,90 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "EZVIZ NVR",
+        "description": "Endereço local e credenciais do gravador (a palavra-passe do equipamento, não a da conta EZVIZ).",
+        "data": {
+          "host": "Endereço IP",
+          "username": "Utilizador",
+          "password": "Palavra-passe",
+          "port": "Porta HTTP",
+          "rtsp_port": "Porta RTSP"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "O gravador recusou o utilizador ou a palavra-passe.",
+      "cannot_connect": "Não foi possível contactar o gravador nesse endereço."
+    },
+    "abort": {
+      "already_configured": "Este gravador já está configurado."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Vídeo",
+        "data": {
+          "transcode": "Converter H.265 para H.264",
+          "live_stream_1": "Fluxo em direto do canal 1",
+          "live_stream_2": "Fluxo em direto do canal 2",
+          "live_stream_3": "Fluxo em direto do canal 3",
+          "live_stream_4": "Fluxo em direto do canal 4",
+          "live_stream_5": "Fluxo em direto do canal 5",
+          "live_stream_6": "Fluxo em direto do canal 6",
+          "live_stream_7": "Fluxo em direto do canal 7",
+          "live_stream_8": "Fluxo em direto do canal 8",
+          "live_stream_9": "Fluxo em direto do canal 9",
+          "live_stream_10": "Fluxo em direto do canal 10",
+          "live_stream_11": "Fluxo em direto do canal 11",
+          "live_stream_12": "Fluxo em direto do canal 12",
+          "live_stream_13": "Fluxo em direto do canal 13",
+          "live_stream_14": "Fluxo em direto do canal 14",
+          "live_stream_15": "Fluxo em direto do canal 15",
+          "live_stream_16": "Fluxo em direto do canal 16"
+        },
+        "data_description": {
+          "transcode": "always: converte todos os canais para H.264 com o go2rtc (só WebRTC; não funciona em HLS / acesso remoto)."
+        }
+      }
+    }
+  },
+  "entity": {
+    "camera": {
+      "playback": {
+        "name": "Gravações"
+      }
+    },
+    "sensor": {
+      "disk_free": {
+        "name": "Disco {disk} livre"
+      },
+      "disk_used_percent": {
+        "name": "Disco {disk} ocupado"
+      }
+    }
+  },
+  "services": {
+    "play": {
+      "name": "Reproduzir gravação",
+      "description": "Muda a câmara de gravações para uma hora; os leitores voltam a ligar e mostram a gravação a partir daí.",
+      "fields": {
+        "start": {
+          "name": "Início",
+          "description": "Hora a partir da qual reproduzir."
+        }
+      }
+    },
+    "get_recordings": {
+      "name": "Obter gravações",
+      "description": "Devolve os blocos gravados de um canal num dia.",
+      "fields": {
+        "date": {
+          "name": "Data",
+          "description": "Dia a listar (por defeito, hoje)."
+        }
+      }
+    }
+  }
+}

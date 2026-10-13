@@ -1,0 +1,232 @@
+# EZVIZ NVR
+
+[![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/integration)
+[![GitHub release](https://img.shields.io/github/release/dmdias/ha-ezviz-nvr.svg)](https://github.com/dmdias/ha-ezviz-nvr/releases)
+[![Validate](https://github.com/dmdias/ha-ezviz-nvr/actions/workflows/validate.yml/badge.svg)](https://github.com/dmdias/ha-ezviz-nvr/actions/workflows/validate.yml)
+[![License: GPLv3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
+[![Buy me a coffee](https://img.shields.io/badge/Buy%20me%20a%20coffee-PayPal-ffdd00?logo=buymeacoffee&logoColor=black)](https://www.paypal.com/donate/?business=dmdias%40gmail.com&currency_code=EUR&item_name=EZVIZ+NVR)
+
+Watch the cameras of an **EZVIZ NVR** live and **play back the recordings
+on its disk** from Home Assistant, as you would in the EZVIZ app. It all
+runs over your local network.
+
+It talks to the NVR directly: ISAPI over HTTP for the channels, disks and
+recording search, and RTSP for live and recorded video. It works with EZVIZ
+NVRs, which are Hikvision devices inside, and should work with other
+Hikvision-based NVRs.
+
+## Contents
+
+- [What you get](#what-you-get)
+- [Requirements](#requirements)
+- [Installation](#installation)
+- [Configuration](#configuration)
+- [The card](#the-card)
+- [Entities](#entities)
+- [Actions](#actions)
+- [Video formats and remote access](#video-formats-and-remote-access)
+- [Troubleshooting](#troubleshooting)
+- [Support the project](#support-the-project)
+- [Author](#author)
+- [License](#license)
+
+## What you get
+
+- **Every NVR channel as cameras**: a live camera and a playback camera per
+  channel, named after the channel on the NVR.
+- **Recordings from the NVR disk**: list what was recorded on any day and
+  play it from any moment.
+- **A dashboard card** in the style of the EZVIZ app:
+  - a camera grid with thumbnails;
+  - a live / playback player;
+  - a 24-hour timeline of the recordings: tap a time to watch from there,
+    move between days, step one minute back or forward.
+- **Disk sensors**: free space and usage of each disk.
+- **Automatic stream choice**: some IP cameras refuse live viewing of their
+  main stream through the NVR, so each channel uses the stream that answers.
+  You can also choose per channel.
+- **Local only**: no EZVIZ cloud and no EZVIZ app login. The password stays
+  in Home Assistant.
+
+## Requirements
+
+- Home Assistant 2024.12 or newer, with the built-in **go2rtc** (enabled by
+  default since 2024.11) for low-latency live video.
+- An EZVIZ (or Hikvision-based) NVR on the same network as Home Assistant.
+- The NVR **device password**: the one set when the NVR was activated, used
+  on its local screen, in SADP or in iVMS-4200. The device verification code
+  printed on the label is not enough for the NVR's HTTP interface.
+- Ports **80** (HTTP) and **554** (RTSP) of the NVR reachable from Home
+  Assistant.
+
+## Installation
+
+1. HACS → **⋮ → Custom repositories** → add
+   `https://github.com/dmdias/ha-ezviz-nvr` with type **Integration**.
+
+   [![Open your Home Assistant instance and open this repository inside HACS.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=dmdias&repository=ha-ezviz-nvr&category=integration)
+2. Search **EZVIZ NVR** → **Download**, and restart Home Assistant.
+3. **Settings → Devices & services → Add integration → EZVIZ NVR**.
+
+   [![Open your Home Assistant instance and start setting up EZVIZ NVR.](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=ezviz_nvr)
+4. Enter:
+   - the NVR **IP address**;
+   - username **admin**;
+   - the **device password**.
+
+   Keep the ports (80 and 554) unless you changed them on the NVR. The
+   integration checks the credentials with the NVR before saving them.
+5. Reload the browser. On the companion app, also reset its frontend cache:
+   **Settings → Companion app → Debugging → Reset frontend cache**.
+
+To find the NVR address, look for it in your router. You can also use the
+EZVIZ integration of Home Assistant: its *Local IP* sensor shows the address
+of each device.
+
+> Hikvision devices lock the account for about 30 minutes after several wrong
+> passwords. If the setup keeps saying the password is wrong, wait before
+> trying again.
+
+## Configuration
+
+**Settings → Devices & services → EZVIZ NVR → Configure**:
+
+| Option | Default | Description |
+|---|---|---|
+| Live stream of each channel | `auto` | `main`, `sub`, or `auto`. With `auto`, the integration uses the main stream if it answers, else the sub stream. Choose `sub` for a camera whose main stream only works now and then. |
+| Convert H.265 to H.264 | `never` | `always` converts every channel with go2rtc so browsers without H.265 support can play it. This only works over WebRTC, not over HLS (see below). |
+
+## The card
+
+The integration loads the card on every dashboard, so there is no resource
+to add. Edit a dashboard → **Add card** → **EZVIZ NVR**, or use YAML:
+
+```yaml
+type: custom:ezviz-nvr-card
+columns: 3   # optional, grid columns (default 2)
+```
+
+It looks best in a view of type **Panel**.
+
+- **Grid**: every channel with a thumbnail, refreshed every 30 seconds, and
+  its online state. The NVR disk usage is shown at the top.
+- **Tap a camera**: live video.
+- **Playback tab**:
+  - Recorded segments of the day are shown in blue on a 24-hour timeline.
+  - Tap the timeline to play from that time, or use **−1 min** / **+1 min**.
+  - **◀ ▶** change the day.
+  - The badge shows when the playback started and roughly where it is now.
+
+## Entities
+
+For an NVR with channels *Front* and *Garden*:
+
+| Entity | Description |
+|---|---|
+| `camera.front` | Live view of the channel |
+| `camera.front_playback` | Recording of the channel, from the time set with `ezviz_nvr.play` (one hour ago by default) |
+| `sensor.<nvr>_disk_1_free` | Free space of disk 1 (GB) |
+| `sensor.<nvr>_disk_1_used` | Usage of disk 1 (%) |
+
+The camera attributes show the channel number, the codec of its main stream
+and which stream the live view uses.
+
+## Actions
+
+### `ezviz_nvr.get_recordings`
+
+Returns the recorded segments of a channel on a day. Contiguous files are
+merged into one segment.
+
+```yaml
+action: ezviz_nvr.get_recordings
+target:
+  entity_id: camera.front
+data:
+  date: "2026-10-13"   # optional, today by default
+response_variable: recordings
+```
+
+The response has the shape
+`{"channel": 1, "date": "2026-10-13", "segments": [{"start": "...", "end": "..."}]}`.
+
+### `ezviz_nvr.play`
+
+Moves a playback camera to a time. Players reconnect to show the recording
+from there.
+
+```yaml
+action: ezviz_nvr.play
+target:
+  entity_id: camera.front_playback
+data:
+  start: "2026-10-13 08:15:00"
+```
+
+Times are the NVR's local time. Home Assistant and the NVR should use the
+same time zone.
+
+## Video formats and remote access
+
+Home Assistant shows camera video in one of two ways:
+
+- **WebRTC through go2rtc**: low latency. It needs a direct connection to
+  Home Assistant, which is the case on your network or over a VPN.
+- **HLS**: a few seconds of delay. It works everywhere, including through a
+  reverse proxy or tunnel (for example Cloudflare), where WebRTC usually
+  cannot connect.
+
+Cameras that record in **H.265 (HEVC)**:
+
+- **Over HLS:** they play in browsers that can decode H.265. That includes
+  Chrome and Edge on most current computers and phones, and Safari. Firefox
+  cannot.
+- **Over WebRTC:** most browsers cannot play them. The option *Convert H.265
+  to H.264* fixes this, but only over WebRTC. The better fix is usually to
+  set the camera to H.264 in the NVR's video settings.
+
+## Troubleshooting
+
+**Invalid username or password**
+- Use the NVR **device password**, not the EZVIZ account password and not
+  the verification code.
+- After several attempts the NVR locks the account for about 30 minutes.
+
+**A camera shows no video ("Operation not permitted")**
+That camera refuses live viewing of its main stream through the NVR, often
+because it only allows a few connections and the NVR is using one to
+record. Set its live stream to `sub` in the integration options.
+
+**The card says "Custom element doesn't exist: ezviz-nvr-card"**
+Reload the browser. On the companion app, reset the frontend cache and
+close the app completely.
+
+**Thumbnails take a while to appear**
+Some NVRs do not serve pictures for IP camera channels. The integration
+then grabs a frame from the video, which can take a few seconds, longer for
+H.265 channels. Thumbnails are cached for 25 seconds.
+
+**The playback starts at a different time than the one I tapped**
+- The NVR searches from the nearest recorded frame, so playback can start a
+  few seconds earlier.
+- If it is off by hours, the NVR's time zone differs from the one Home
+  Assistant uses.
+
+## Support the project
+
+If this saves you from the EZVIZ app, you can buy me a coffee ☕. Thank you!
+
+<a href="https://www.paypal.com/donate/?business=dmdias%40gmail.com&currency_code=EUR&item_name=EZVIZ+NVR"><img src="https://img.shields.io/badge/Buy%20me%20a%20coffee-Donate%20with%20PayPal-ffdd00?style=for-the-badge&logo=buymeacoffee&logoColor=black" alt="Buy me a coffee"></a>
+
+Bug reports and ideas are welcome in the [issues](https://github.com/dmdias/ha-ezviz-nvr/issues).
+
+## Author
+
+**Daniel Dias** ([@dmdias](https://github.com/dmdias)).
+
+## License
+
+[GPL-3.0](LICENSE).
+
+Not affiliated with EZVIZ or Hikvision; product names are trademarks of
+their owners.

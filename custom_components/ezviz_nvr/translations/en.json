@@ -1,0 +1,90 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "EZVIZ NVR",
+        "description": "Local address and credentials of the NVR (the device password, not the EZVIZ account).",
+        "data": {
+          "host": "IP address",
+          "username": "Username",
+          "password": "Password",
+          "port": "HTTP port",
+          "rtsp_port": "RTSP port"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "The NVR refused the username or password.",
+      "cannot_connect": "Could not reach the NVR at that address."
+    },
+    "abort": {
+      "already_configured": "This NVR is already set up."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Video",
+        "data": {
+          "transcode": "Convert H.265 to H.264",
+          "live_stream_1": "Live stream of channel 1",
+          "live_stream_2": "Live stream of channel 2",
+          "live_stream_3": "Live stream of channel 3",
+          "live_stream_4": "Live stream of channel 4",
+          "live_stream_5": "Live stream of channel 5",
+          "live_stream_6": "Live stream of channel 6",
+          "live_stream_7": "Live stream of channel 7",
+          "live_stream_8": "Live stream of channel 8",
+          "live_stream_9": "Live stream of channel 9",
+          "live_stream_10": "Live stream of channel 10",
+          "live_stream_11": "Live stream of channel 11",
+          "live_stream_12": "Live stream of channel 12",
+          "live_stream_13": "Live stream of channel 13",
+          "live_stream_14": "Live stream of channel 14",
+          "live_stream_15": "Live stream of channel 15",
+          "live_stream_16": "Live stream of channel 16"
+        },
+        "data_description": {
+          "transcode": "always: convert every channel to H.264 with go2rtc (WebRTC only; does not play over HLS / remote access)."
+        }
+      }
+    }
+  },
+  "entity": {
+    "camera": {
+      "playback": {
+        "name": "Playback"
+      }
+    },
+    "sensor": {
+      "disk_free": {
+        "name": "Disk {disk} free"
+      },
+      "disk_used_percent": {
+        "name": "Disk {disk} used"
+      }
+    }
+  },
+  "services": {
+    "play": {
+      "name": "Play recording",
+      "description": "Moves a playback camera to a time; players reconnect to show the recording from there.",
+      "fields": {
+        "start": {
+          "name": "Start",
+          "description": "Time to play from."
+        }
+      }
+    },
+    "get_recordings": {
+      "name": "Get recordings",
+      "description": "Returns the recorded segments of a channel on a day.",
+      "fields": {
+        "date": {
+          "name": "Date",
+          "description": "Day to list (default: today)."
+        }
+      }
+    }
+  }
+}

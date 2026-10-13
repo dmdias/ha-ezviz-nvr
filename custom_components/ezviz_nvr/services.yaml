@@ -1,0 +1,22 @@
+play:
+  target:
+    entity:
+      integration: ezviz_nvr
+      domain: camera
+  fields:
+    start:
+      required: true
+      example: "2026-10-13 10:30:00"
+      selector:
+        datetime:
+get_recordings:
+  target:
+    entity:
+      integration: ezviz_nvr
+      domain: camera
+  fields:
+    date:
+      required: false
+      example: "2026-10-13"
+      selector:
+        date:
