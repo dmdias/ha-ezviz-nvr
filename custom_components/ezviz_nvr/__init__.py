@@ -7,17 +7,38 @@ from homeassistant.components.frontend import add_extra_js_url, remove_extra_js_
 from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_PORT, CONF_USERNAME, Platform
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, ServiceCall, ServiceResponse, SupportsResponse
 from homeassistant.helpers import config_validation as cv, device_registry as dr
 from homeassistant.helpers.httpx_client import get_async_client
+import voluptuous as vol
 
 from .api import NvrClient
-from .const import CONF_RTSP_PORT, DOMAIN, FRONTEND_URL, VERSION
+from .const import CONF_RTSP_PORT, DOMAIN, FRONTEND_URL, SERVICE_GET_EVENTS, VERSION
 from .coordinator import NvrCoordinator
+from .events import EventImageView, async_get_events
 
 PLATFORMS = [Platform.CAMERA, Platform.SENSOR]
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 CARD_URL = f"{FRONTEND_URL}?v={VERSION}"
+
+GET_EVENTS_SCHEMA = vol.Schema(
+    {
+        vol.Required("entity_id"): cv.entity_id,
+        vol.Optional("date"): cv.date,
+        vol.Optional("limit", default=50): vol.All(vol.Coerce(int), vol.Range(min=1, max=200)),
+    }
+)
+
+
+async def async_setup(hass: HomeAssistant, config: dict) -> bool:
+    """Events of the EZVIZ cloud cameras (e.g. a doorbell), through the EZVIZ integration."""
+    hass.http.register_view(EventImageView(hass))
+
+    async def handle_get_events(call: ServiceCall) -> ServiceResponse:
+        return await async_get_events(hass, call.data["entity_id"], call.data.get("date"), call.data["limit"])
+
+    hass.services.async_register(DOMAIN, SERVICE_GET_EVENTS, handle_get_events, schema=GET_EVENTS_SCHEMA, supports_response=SupportsResponse.ONLY)
+    return True
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:

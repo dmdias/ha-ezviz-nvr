@@ -85,6 +85,24 @@
           "description": "Day to list (default: today)."
         }
       }
+    },
+    "get_events": {
+      "name": "Get events",
+      "description": "Returns the events (motion, ring, smart detection) of an EZVIZ cloud camera on a day, with their pictures. Uses the EZVIZ integration.",
+      "fields": {
+        "entity_id": {
+          "name": "Camera",
+          "description": "Camera of the EZVIZ integration."
+        },
+        "date": {
+          "name": "Date",
+          "description": "Day to list (default: today)."
+        },
+        "limit": {
+          "name": "Limit",
+          "description": "Maximum number of events."
+        }
+      }
     }
   }
 }

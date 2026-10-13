@@ -9,6 +9,26 @@ play:
       example: "2026-10-13 10:30:00"
       selector:
         datetime:
+get_events:
+  fields:
+    entity_id:
+      required: true
+      selector:
+        entity:
+          integration: ezviz
+          domain: camera
+    date:
+      required: false
+      example: "2026-10-13"
+      selector:
+        date:
+    limit:
+      required: false
+      default: 50
+      selector:
+        number:
+          min: 1
+          max: 200
 get_recordings:
   target:
     entity:

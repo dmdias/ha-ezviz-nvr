@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.0
+
+- Events of EZVIZ cloud cameras (doorbells, battery cameras) in the card: the
+  day's events with their pictures, time and alarm type, through the session
+  of the Home Assistant EZVIZ integration
+- `ezviz_nvr.get_events` action
+- Event pictures are served (and decrypted when needed) by Home Assistant,
+  only from the EZVIZ clouds, with signed URLs
+
 ## 0.1.1
 
 - Responsive camera grid: `columns` is the maximum; tiles keep a usable size and wrap

@@ -7,19 +7,22 @@
  *
  *   type: custom:ezviz-nvr-card
  *   columns: 2          # optional, maximum camera grid columns (tiles wrap on narrow screens)
+ *   cloud_cameras: [camera.doorbell]   # optional, EZVIZ cloud cameras to list (default: all but the NVR)
  */
 
-const CARD_VERSION = "0.1.1";
+const CARD_VERSION = "0.2.0";
 const DOMAIN = "ezviz_nvr";
 
 const TEXT = {
   pt: {
-    live: "Direto", playback: "Gravações", back: "Câmaras", offline: "Offline", disk: "Disco",
+    live: "Direto", playback: "Gravações", back: "Câmaras", offline: "Offline", disk: "Disco", events: "Eventos",
+    no_events: "Sem eventos neste dia.", cloud: "Cloud", no_picture: "Sem imagem",
     no_recordings: "Sem gravações neste dia.", loading: "A carregar…", none: "Nenhuma câmara do gravador encontrada.",
     tap_timeline: "Toca na linha do tempo para ver a gravação a partir dessa hora.", playing_from: "A reproduzir desde",
   },
   en: {
-    live: "Live", playback: "Playback", back: "Cameras", offline: "Offline", disk: "Disk",
+    live: "Live", playback: "Playback", back: "Cameras", offline: "Offline", disk: "Disk", events: "Events",
+    no_events: "No events on this day.", cloud: "Cloud", no_picture: "No picture",
     no_recordings: "No recordings on this day.", loading: "Loading…", none: "No NVR cameras found.",
     tap_timeline: "Tap the timeline to play the recording from that time.", playing_from: "Playing from",
   },
@@ -110,15 +113,37 @@ class EzvizNvrCard extends HTMLElement {
       }
     }
     this._channels = Object.values(channels).sort((a, b) => a.channel - b.channel);
+    // Cameras of the EZVIZ cloud account that are not the NVR itself (doorbells, ...)
+    const byDevice = {};
+    for (const e of registry) if (e.device_id && !e.disabled_by) (byDevice[e.device_id] ??= []).push(e);
+    const wanted = this._config.cloud_cameras;
+    this._cloud = registry
+      .filter((e) => e.platform === "ezviz" && e.entity_id.startsWith("camera.") && !e.disabled_by)
+      .filter((e) => {
+        if (Array.isArray(wanted)) return wanted.includes(e.entity_id);
+        const dev = this._hass.devices?.[e.device_id];
+        const model = String(dev?.model || "");
+        return !/^HWN|NVR/i.test(dev?.name || "") && !/^(UNKNOWN|HWN)/i.test(model);
+      })
+      .map((e) => ({
+        key: `cloud:${e.entity_id}`,
+        entity: e.entity_id,
+        image: (byDevice[e.device_id] || []).find((x) => x.entity_id.startsWith("image."))?.entity_id || null,
+      }));
     this._disks = disks;
     this._signature = "";
     this._render();
+  }
+
+  _cloudName(c) {
+    return this._hass.states[c.entity]?.attributes.friendly_name || c.entity;
   }
 
   _sig() {
     if (!this._channels || !this._hass) return String(this._channels);
     return this._channels
       .flatMap((c) => [c.live, c.playback])
+      .concat((this._cloud || []).flatMap((c) => [c.entity, c.image]))
       .map((id) => {
         const s = this._hass.states[id];
         return s ? `${s.state}:${s.attributes.playback_start || ""}` : "";
@@ -169,11 +194,23 @@ class EzvizNvrCard extends HTMLElement {
           <div class="tile-bar"><span class="dot ${offline ? "" : "on"}"></span>${esc(this._name(ch))}</div></button>`;
       })
       .join("");
+    const cloudTiles = (this._cloud || [])
+      .map((c) => {
+        const st = this._hass.states[c.entity];
+        const offline = !st || st.state === "unavailable";
+        const pic = c.image ? this._hass.states[c.image]?.attributes.entity_picture : null;
+        return `<button class="tile" data-open="${esc(c.key)}">
+          ${pic ? `<img class="snap" src="${esc(pic)}" alt="">` : `<div class="snap off">${esc(this._t.no_picture)}</div>`}
+          <span class="tag">${esc(this._t.cloud)}</span>
+          <div class="tile-bar"><span class="dot ${offline ? "" : "on"}"></span>${esc(this._cloudName(c))}</div></button>`;
+      })
+      .join("");
     return `<div class="head"><b>EZVIZ NVR</b>${this._diskBar()}</div>
-      <div class="grid" style="--cols:${cols}">${tiles}</div>`;
+      <div class="grid" style="--cols:${cols}">${tiles}${cloudTiles}</div>`;
   }
 
   _playerView() {
+    if (this._view.startsWith("cloud:")) return this._eventsView();
     const ch = this._channels.find((c) => c.key === this._view);
     if (!ch) return this._gridView();
     const t = this._t;
@@ -222,6 +259,63 @@ class EzvizNvrCard extends HTMLElement {
       <div class="hint">${data && !data.segments?.length ? esc(t.no_recordings) : data?.error ? esc(data.error) : esc(t.tap_timeline)}</div>`;
   }
 
+  _eventsView() {
+    const t = this._t;
+    const cam = (this._cloud || []).find((c) => c.key === this._view);
+    if (!cam) return this._gridView();
+    const key = `${cam.entity}:${isoDay(this._day)}`;
+    const data = this._events?.[key];
+    if (!data) this._loadEvents(cam);
+    const today = isoDay(this._day) === isoDay(new Date());
+    let body = `<div class="hint">${esc(t.loading)}</div>`;
+    if (data?.error) body = `<div class="hint">${esc(data.error)}</div>`;
+    else if (data && !data.events.length) body = `<div class="hint">${esc(t.no_events)}</div>`;
+    else if (data)
+      body = `<div class="events">${data.events
+        .map((e, i) => {
+          const when = e.time ? new Date(e.time) : null;
+          return `<button class="event" data-event="${i}">
+            ${e.signed ? `<img src="${esc(e.signed)}" alt="" loading="lazy">` : `<div class="snap off">${esc(t.no_picture)}</div>`}
+            <div class="event-bar"><b>${when && !isNaN(when) ? hhmmss(when) : ""}</b><span>${esc(e.title || "")}</span></div></button>`;
+        })
+        .join("")}</div>`;
+    const zoom = this._zoomEvent != null && data?.events?.[this._zoomEvent];
+    return `
+      <div class="head"><button class="back" data-back>‹ ${esc(t.back)}</button><b>${esc(this._cloudName(cam))}</b>
+        <span class="tag inline">${esc(t.events)}</span></div>
+      <div class="timeline-head"><button data-day="-1">◀</button><span>${esc(isoDay(this._day))}</span><button data-day="1" ${today ? "disabled" : ""}>▶</button>
+        <span class="spacer"></span><span class="hint">${data?.events ? data.events.length : ""}</span></div>
+      ${body}
+      ${zoom && zoom.signed ? `<div class="overlay" data-close><img src="${esc(zoom.signed)}" alt=""><div>${esc(zoom.title || "")} · ${zoom.time ? hhmmss(new Date(zoom.time)) : ""}</div></div>` : ""}`;
+  }
+
+  async _loadEvents(cam) {
+    const key = `${cam.entity}:${isoDay(this._day)}`;
+    if (this._loadingEvents === key) return;
+    this._loadingEvents = key;
+    this._events ??= {};
+    try {
+      const res = await this._hass.callService(DOMAIN, "get_events", { entity_id: cam.entity, date: isoDay(this._day), limit: 100 }, undefined, false, true);
+      const events = res?.response?.events || [];
+      // Pictures go through Home Assistant: sign their URLs so <img> can load them
+      await Promise.all(
+        events.map(async (e) => {
+          if (!e.picture) return;
+          try {
+            e.signed = (await this._hass.callWS({ type: "auth/sign_path", path: e.picture, expires: 3600 })).path;
+          } catch (err) {
+            e.signed = null;
+          }
+        })
+      );
+      this._events[key] = { events };
+    } catch (err) {
+      this._events[key] = { events: [], error: err.message || String(err) };
+    }
+    this._loadingEvents = null;
+    this._render();
+  }
+
   async _loadRecordings(ch) {
     const key = `${ch.key}:${isoDay(this._day)}`;
     if (this._loading === key) return;
@@ -240,7 +334,7 @@ class EzvizNvrCard extends HTMLElement {
   /** The player is a stock picture-entity card in live view, kept across renders. */
   async _mountPlayer() {
     const slot = this.shadowRoot.querySelector(".player-slot");
-    if (!slot) return;
+    if (!slot || this._view?.startsWith("cloud:")) return;
     const ch = this._channels.find((c) => c.key === this._view);
     const entity = this._mode === "live" ? ch.live : ch.playback;
     const start = this._hass.states[ch.playback]?.attributes.playback_start;
@@ -277,7 +371,9 @@ class EzvizNvrCard extends HTMLElement {
 
   _bind() {
     const root = this.shadowRoot;
-    root.querySelectorAll("[data-open]").forEach((b) => (b.onclick = () => ((this._view = b.dataset.open), (this._mode = "live"), (this._player = null), this._render())));
+    root.querySelectorAll("[data-open]").forEach(
+      (b) => (b.onclick = () => ((this._view = b.dataset.open), (this._mode = "live"), (this._player = null), (this._day = new Date()), (this._zoomEvent = null), this._render()))
+    );
     const back = root.querySelector("[data-back]");
     if (back) back.onclick = () => ((this._view = null), (this._player = null), this._render());
     root.querySelectorAll("[data-mode]").forEach((b) => (b.onclick = () => ((this._mode = b.dataset.mode), (this._day = new Date()), this._render())));
@@ -287,9 +383,13 @@ class EzvizNvrCard extends HTMLElement {
           const d = new Date(this._day);
           d.setDate(d.getDate() + Number(b.dataset.day));
           this._day = d > new Date() ? new Date() : d;
+          this._zoomEvent = null;
           this._render();
         })
     );
+    root.querySelectorAll("[data-event]").forEach((b) => (b.onclick = () => ((this._zoomEvent = Number(b.dataset.event)), this._render())));
+    const overlay = root.querySelector("[data-close]");
+    if (overlay) overlay.onclick = () => ((this._zoomEvent = null), this._render());
     const ch = this._channels?.find((c) => c.key === this._view);
     root.querySelectorAll("[data-nudge]").forEach(
       (b) =>
@@ -363,6 +463,16 @@ const STYLES = `
   .ticks span { position:absolute; transform:translateX(-50%); top:3px; }
   .ticks span:first-child { transform:none; }
   .hint { color:var(--muted); font-size:12px; margin-top:4px; }
+  .tag { position:absolute; top:8px; right:8px; background:rgba(61,139,253,.85); color:#fff; font-size:11px; padding:2px 7px; border-radius:6px; }
+  .tag.inline { position:static; margin-left:auto; }
+  .events { display:grid; gap:8px; grid-template-columns:repeat(auto-fill, minmax(170px, 1fr)); margin-top:6px; }
+  .event { position:relative; padding:0; border:none; border-radius:10px; overflow:hidden; background:var(--panel); cursor:pointer; color:var(--text); font-family:inherit; aspect-ratio:16/10; }
+  .event img { width:100%; height:100%; object-fit:cover; display:block; }
+  .event-bar { position:absolute; left:0; right:0; bottom:0; display:flex; gap:6px; align-items:baseline; padding:5px 8px; font-size:12px; text-align:left;
+    background:linear-gradient(transparent, rgba(0,0,0,.8)); white-space:nowrap; overflow:hidden; }
+  .event-bar span { color:#cfd5e2; overflow:hidden; text-overflow:ellipsis; }
+  .overlay { position:fixed; inset:0; z-index:10; background:rgba(0,0,0,.88); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; cursor:zoom-out; color:#fff; font-size:14px; }
+  .overlay img { max-width:96vw; max-height:84vh; border-radius:8px; }
 `;
 
 customElements.define("ezviz-nvr-card", EzvizNvrCard);

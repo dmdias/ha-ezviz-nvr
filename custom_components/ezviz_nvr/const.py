@@ -2,7 +2,7 @@
 from typing import Final
 
 DOMAIN: Final = "ezviz_nvr"
-VERSION: Final = "0.1.1"
+VERSION: Final = "0.2.0"
 
 CONF_RTSP_PORT: Final = "rtsp_port"
 CONF_TRANSCODE: Final = "transcode"  # never | always
@@ -13,5 +13,6 @@ FRONTEND_URL: Final = "/ezviz_nvr/ezviz-nvr-card.js"
 
 SERVICE_PLAY: Final = "play"
 SERVICE_GET_RECORDINGS: Final = "get_recordings"
+SERVICE_GET_EVENTS: Final = "get_events"
 
 UPDATE_INTERVAL_SECONDS: Final = 60

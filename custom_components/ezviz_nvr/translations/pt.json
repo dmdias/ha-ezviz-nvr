@@ -85,6 +85,24 @@
           "description": "Dia a listar (por defeito, hoje)."
         }
       }
+    },
+    "get_events": {
+      "name": "Obter eventos",
+      "description": "Devolve os eventos (movimento, toque, deteção inteligente) de uma câmara da conta EZVIZ num dia, com as fotografias. Usa a integração EZVIZ.",
+      "fields": {
+        "entity_id": {
+          "name": "Câmara",
+          "description": "Câmara da integração EZVIZ."
+        },
+        "date": {
+          "name": "Data",
+          "description": "Dia a listar (por defeito, hoje)."
+        },
+        "limit": {
+          "name": "Limite",
+          "description": "Número máximo de eventos."
+        }
+      }
     }
   }
 }

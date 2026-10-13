@@ -42,11 +42,16 @@ Hikvision-based NVRs.
   - a 24-hour timeline of the recordings: tap a time to watch from there,
     move between days, step one minute back or forward.
 - **Disk sensors**: free space and usage of each disk.
+- **Events of EZVIZ cloud cameras**: some devices only talk to the EZVIZ
+  cloud, for example many doorbells and battery cameras. For those, the card
+  lists the day's events (motion, ring, smart detection) with their
+  pictures, through the Home Assistant EZVIZ integration.
 - **Automatic stream choice**: some IP cameras refuse live viewing of their
   main stream through the NVR, so each channel uses the stream that answers.
   You can also choose per channel.
-- **Local only**: no EZVIZ cloud and no EZVIZ app login. The password stays
-  in Home Assistant.
+- **Local video**: the NVR video never goes through the EZVIZ cloud, and the
+  NVR password stays in Home Assistant. Only the optional cloud camera events
+  use the EZVIZ account, through the existing EZVIZ integration.
 
 ## Requirements
 
@@ -58,6 +63,9 @@ Hikvision-based NVRs.
   printed on the label is not enough for the NVR's HTTP interface.
 - Ports **80** (HTTP) and **554** (RTSP) of the NVR reachable from Home
   Assistant.
+- Optional, for the events of cloud-only cameras (doorbells, ...): the
+  Home Assistant [EZVIZ integration](https://www.home-assistant.io/integrations/ezviz/)
+  set up with your EZVIZ account.
 
 ## Installation
 
@@ -104,6 +112,8 @@ to add. Edit a dashboard → **Add card** → **EZVIZ NVR**, or use YAML:
 ```yaml
 type: custom:ezviz-nvr-card
 columns: 3   # optional, maximum grid columns (default 2); tiles wrap on narrow screens
+cloud_cameras:   # optional, EZVIZ cloud cameras to list (default: all but the NVR)
+  - camera.front_doorbell
 ```
 
 It looks best in a view of type **Panel**.
@@ -116,6 +126,11 @@ It looks best in a view of type **Panel**.
   - Tap the timeline to play from that time, or use **−1 min** / **+1 min**.
   - **◀ ▶** change the day.
   - The badge shows when the playback started and roughly where it is now.
+- **EZVIZ cloud cameras** (tagged *Cloud*), such as a doorbell:
+  - The grid shows the last motion picture.
+  - Tapping one opens the day's events with their pictures, time and type.
+  - Tap a picture to enlarge it, or use **◀ ▶** to change the day.
+  - These cameras need the Home Assistant EZVIZ integration.
 
 ## Entities
 
@@ -149,6 +164,25 @@ response_variable: recordings
 
 The response has the shape
 `{"channel": 1, "date": "2026-10-13", "segments": [{"start": "...", "end": "..."}]}`.
+
+### `ezviz_nvr.get_events`
+
+Returns the events of a camera of the Home Assistant EZVIZ integration (for
+example a doorbell) on a day: time, alarm type, whether a video was recorded,
+and a picture URL served by Home Assistant. It uses the session of the EZVIZ
+integration, so there is no second login.
+
+```yaml
+action: ezviz_nvr.get_events
+data:
+  entity_id: camera.front_doorbell
+  date: "2026-10-13"   # optional, today by default
+  limit: 50            # optional, up to 200
+response_variable: events
+```
+
+Pictures come from the EZVIZ cloud only. Home Assistant decrypts them when
+the camera encrypts its images.
 
 ### `ezviz_nvr.play`
 
@@ -200,6 +234,14 @@ record. Set its live stream to `sub` in the integration options.
 **The card says "Custom element doesn't exist: ezviz-nvr-card"**
 Reload the browser. On the companion app, reset the frontend cache and
 close the app completely.
+
+**A doorbell or battery camera shows no video, only events**
+- These devices only talk to the EZVIZ cloud: they have no RTSP or HTTP on
+  the local network, so their live view and SD card recordings are not
+  reachable locally.
+- The EZVIZ Open Platform could stream them, but only for devices owned by
+  the developer account. That would mean moving the device out of your app
+  account, so it is not used here.
 
 **Thumbnails take a while to appear**
 Some NVRs do not serve pictures for IP camera channels. The integration
