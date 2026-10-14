@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.3.0
+
+- People: optional face recognition in the events of the EZVIZ cloud cameras
+  (doorbells, ...). Faces are grouped by person; the card lists who was seen,
+  how often and when, with every occurrence, and lets you name each person
+  (the same name merges two people), move a face to another person or delete it
+- Runs in Home Assistant on numpy (YuNet and SFace models from the OpenCV Zoo);
+  no add-on, no cloud service
+- `ezviz_nvr_face_detected` event for automations
+- Fix: the card was no longer loaded after the integration options were saved
+  (until Home Assistant restarted)
+- The card URL changes with the card file, so browsers do not keep an old card
+
 ## 0.2.0
 
 - Events of EZVIZ cloud cameras (doorbells, battery cameras) in the card: the

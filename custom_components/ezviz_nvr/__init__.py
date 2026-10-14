@@ -13,13 +13,15 @@ from homeassistant.helpers.httpx_client import get_async_client
 import voluptuous as vol
 
 from .api import NvrClient
-from .const import CONF_RTSP_PORT, DOMAIN, FRONTEND_URL, SERVICE_GET_EVENTS, VERSION
+from .const import CONF_FACES, CONF_FACES_RETENTION, CONF_RTSP_PORT, DOMAIN, FRONTEND_URL, SERVICE_GET_EVENTS, VERSION
 from .coordinator import NvrCoordinator
 from .events import EventImageView, async_get_events
+from .faces import FaceIndex, FacePictureView, async_register_websocket
 
 PLATFORMS = [Platform.CAMERA, Platform.SENSOR]
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
-CARD_URL = f"{FRONTEND_URL}?v={VERSION}"
+CARD_FILE = Path(__file__).parent / "frontend" / "ezviz-nvr-card.js"
+FACES = f"{DOMAIN}_faces"
 
 GET_EVENTS_SCHEMA = vol.Schema(
     {
@@ -33,6 +35,8 @@ GET_EVENTS_SCHEMA = vol.Schema(
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     """Events of the EZVIZ cloud cameras (e.g. a doorbell), through the EZVIZ integration."""
     hass.http.register_view(EventImageView(hass))
+    hass.http.register_view(FacePictureView(hass))
+    async_register_websocket(hass, lambda: hass.data.get(FACES))
 
     async def handle_get_events(call: ServiceCall) -> ServiceResponse:
         return await async_get_events(hass, call.data["entity_id"], call.data.get("date"), call.data["limit"])
@@ -65,15 +69,28 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         serial_number=info.serial,
     )
 
+    # The static path can only be registered once per run; the card URL is added
+    # again after a reload (e.g. a change of options), as unloading removes it
     if not hass.data.get(f"{DOMAIN}_frontend"):
         await hass.http.async_register_static_paths(
-            [StaticPathConfig(FRONTEND_URL, str(Path(__file__).parent / "frontend" / "ezviz-nvr-card.js"), False)]
+            [StaticPathConfig(FRONTEND_URL, str(CARD_FILE), False)]
         )
-        add_extra_js_url(hass, CARD_URL)
         hass.data[f"{DOMAIN}_frontend"] = True
+    if not hass.data.get(f"{DOMAIN}_card"):
+        # The URL changes with the file, so browsers never keep an old card
+        mtime = await hass.async_add_executor_job(lambda: int(CARD_FILE.stat().st_mtime))
+        hass.data[f"{DOMAIN}_card"] = f"{FRONTEND_URL}?v={VERSION}-{mtime}"
+        add_extra_js_url(hass, hass.data[f"{DOMAIN}_card"])
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(_async_reload))
+
+    # People recognised in the events of the EZVIZ cloud cameras (one index for all NVRs)
+    if entry.options.get(CONF_FACES) and FACES not in hass.data:
+        index = FaceIndex(hass, entry.options.get(CONF_FACES_RETENTION, 90))
+        hass.data[FACES] = index
+        hass.data[f"{FACES}_entry"] = entry.entry_id
+        await index.async_start()
     return True
 
 
@@ -83,6 +100,9 @@ async def _async_reload(hass: HomeAssistant, entry: ConfigEntry) -> None:
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     unloaded = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
-    if unloaded and not hass.config_entries.async_loaded_entries(DOMAIN):
-        remove_extra_js_url(hass, CARD_URL)
+    if unloaded and hass.data.get(f"{FACES}_entry") == entry.entry_id:
+        await hass.data.pop(FACES).async_stop()
+        hass.data.pop(f"{FACES}_entry")
+    if unloaded and not [e for e in hass.config_entries.async_loaded_entries(DOMAIN) if e.entry_id != entry.entry_id]:
+        remove_extra_js_url(hass, hass.data.pop(f"{DOMAIN}_card"))
     return unloaded

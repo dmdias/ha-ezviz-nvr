@@ -24,7 +24,7 @@
   "options": {
     "step": {
       "init": {
-        "title": "Video",
+        "title": "Video and people",
         "data": {
           "transcode": "Convert H.265 to H.264",
           "live_stream_1": "Live stream of channel 1",
@@ -42,10 +42,14 @@
           "live_stream_13": "Live stream of channel 13",
           "live_stream_14": "Live stream of channel 14",
           "live_stream_15": "Live stream of channel 15",
-          "live_stream_16": "Live stream of channel 16"
+          "live_stream_16": "Live stream of channel 16",
+          "faces": "Recognise people in the events of the EZVIZ cloud cameras",
+          "faces_retention_days": "Days to keep the faces"
         },
         "data_description": {
-          "transcode": "always: convert every channel to H.264 with go2rtc (WebRTC only; does not play over HLS / remote access)."
+          "transcode": "always: convert every channel to H.264 with go2rtc (WebRTC only; does not play over HLS / remote access).",
+          "faces": "Finds faces in the event pictures of the EZVIZ cloud cameras (doorbells, ...) and groups them by person, so you can name them. Runs in Home Assistant; needs the EZVIZ integration.",
+          "faces_retention_days": "Older faces are deleted; the last 10 faces of each named person are kept so they are still recognised."
         }
       }
     }

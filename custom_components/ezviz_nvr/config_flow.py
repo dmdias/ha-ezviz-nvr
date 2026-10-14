@@ -11,7 +11,7 @@ from homeassistant.core import callback
 from homeassistant.helpers.httpx_client import get_async_client
 
 from .api import NvrAuthError, NvrClient, NvrError
-from .const import CONF_LIVE_STREAM, CONF_RTSP_PORT, CONF_TRANSCODE, DOMAIN
+from .const import CONF_FACES, CONF_FACES_RETENTION, CONF_LIVE_STREAM, CONF_RTSP_PORT, CONF_TRANSCODE, DOMAIN
 
 USER_SCHEMA = vol.Schema(
     {
@@ -59,7 +59,7 @@ class EzvizNvrConfigFlow(ConfigFlow, domain=DOMAIN):
 
 
 class EzvizNvrOptionsFlow(OptionsFlow):
-    """Video options."""
+    """Video and face recognition options."""
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         if user_input is not None:
@@ -71,5 +71,7 @@ class EzvizNvrOptionsFlow(OptionsFlow):
         for channel in channels:
             key = CONF_LIVE_STREAM.format(channel=channel.id)
             fields[vol.Optional(key, default=options.get(key, "auto"))] = vol.In(["auto", "main", "sub"])
+        fields[vol.Optional(CONF_FACES, default=options.get(CONF_FACES, False))] = bool
+        fields[vol.Optional(CONF_FACES_RETENTION, default=options.get(CONF_FACES_RETENTION, 90))] = vol.All(vol.Coerce(int), vol.Range(min=1, max=3650))
         schema = vol.Schema(fields)
         return self.async_show_form(step_id="init", data_schema=schema)

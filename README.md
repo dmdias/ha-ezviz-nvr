@@ -22,6 +22,7 @@ Hikvision-based NVRs.
 - [Installation](#installation)
 - [Configuration](#configuration)
 - [The card](#the-card)
+- [People (face recognition)](#people-face-recognition)
 - [Entities](#entities)
 - [Actions](#actions)
 - [Video formats and remote access](#video-formats-and-remote-access)
@@ -46,6 +47,9 @@ Hikvision-based NVRs.
   cloud, for example many doorbells and battery cameras. For those, the card
   lists the day's events (motion, ring, smart detection) with their
   pictures, through the Home Assistant EZVIZ integration.
+- **People**, optional: faces in the events of the cloud cameras are grouped
+  by person, so you can see who rang and when, and give each person a name.
+  It runs inside Home Assistant.
 - **Automatic stream choice**: some IP cameras refuse live viewing of their
   main stream through the NVR, so each channel uses the stream that answers.
   You can also choose per channel.
@@ -102,6 +106,8 @@ of each device.
 | Option | Default | Description |
 |---|---|---|
 | Live stream of each channel | `auto` | `main`, `sub`, or `auto`. With `auto`, the integration uses the main stream if it answers, else the sub stream. Choose `sub` for a camera whose main stream only works now and then. |
+| Recognise people in the events of the EZVIZ cloud cameras | off | Turns on [People](#people-face-recognition). |
+| Days to keep the faces | `90` | Older faces are deleted, except the last 10 of each named person. |
 | Convert H.265 to H.264 | `never` | `always` converts every channel with go2rtc so browsers without H.265 support can play it. This only works over WebRTC, not over HLS (see below). |
 
 ## The card
@@ -131,6 +137,64 @@ It looks best in a view of type **Panel**.
   - Tapping one opens the day's events with their pictures, time and type.
   - Tap a picture to enlarge it, or use **◀ ▶** to change the day.
   - These cameras need the Home Assistant EZVIZ integration.
+
+## People (face recognition)
+
+Turn on **Recognise people in the events of the EZVIZ cloud cameras** in the
+options. It needs the Home Assistant EZVIZ integration.
+
+**How it works**
+- Every 2 minutes the new events of the EZVIZ cloud cameras (doorbells, ...)
+  are read. The first time, the last 14 days are read.
+- Each event picture is searched for faces.
+- Each face joins the person whose earlier faces look most alike, or starts a
+  new, unnamed person.
+
+**In the card**, the **👤 People** button lists who was seen, how many times and
+when last. Open a person to:
+- **Name them**: type the name and press **Save** or Enter. Giving two people
+  the same name merges them. This is the usual fix when the same person was
+  split in two, for example with and without sunglasses.
+- **Open an occurrence**: the full picture, with the face marked. From there:
+  - **Move to** puts a face that went to the wrong person under the right name.
+  - **Remove face** deletes it.
+- **Delete the person** with all their faces (administrators only).
+
+**Automations**: when a face is found in a new event, Home Assistant fires
+`ezviz_nvr_face_detected`:
+
+```yaml
+triggers:
+  - trigger: event
+    event_type: ezviz_nvr_face_detected
+    event_data:
+      name: Maria
+actions:
+  - action: notify.mobile_app_phone
+    data:
+      message: "Maria is at the door"
+```
+
+The event data has `person_id`, `name` (`#7` for an unnamed person), `named`,
+`new_person`, `camera`, `time` and `face_id`.
+
+**Privacy and resources**
+- Everything stays in Home Assistant:
+  - the index is in `.storage/ezviz_nvr.faces`;
+  - the face thumbnails and the event pictures with faces are in
+    `<config>/ezviz_nvr/faces`.
+- Nothing is sent to any service. The models are
+  [YuNet](https://github.com/opencv/opencv_zoo/tree/main/models/face_detection_yunet)
+  (face detection, MIT) and
+  [SFace](https://github.com/opencv/opencv_zoo/tree/main/models/face_recognition_sface)
+  (face features, Apache 2.0) from the OpenCV Zoo. They run on numpy, so no
+  add-on is needed.
+- About half a second of CPU per picture on a small server.
+- Faces smaller than about 28 pixels are ignored.
+- Recognition is not perfect: people at an angle, in the dark or far away may
+  be missed or split into more than one person.
+- Face pictures are personal data. If the camera sees a public place, check
+  the rules that apply where you live.
 
 ## Entities
 
@@ -242,6 +306,12 @@ close the app completely.
 - The EZVIZ Open Platform could stream them, but only for devices owned by
   the developer account. That would mean moving the device out of your app
   account, so it is not used here.
+
+**No people appear**
+- Check that the option is on and that the EZVIZ integration is loaded.
+- The People view shows the time of the last scan, and the error if there
+  was one.
+- **Scan now** reads the last two days again.
 
 **Thumbnails take a while to appear**
 Some NVRs do not serve pictures for IP camera channels. The integration

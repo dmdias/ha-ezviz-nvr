@@ -147,6 +147,15 @@ async def async_get_events(hass: HomeAssistant, entity_id: str, day: date | None
         raise HomeAssistantError("The EZVIZ integration (cloud account) is not set up or not loaded")
     serial = camera_serial(hass, entity_id)
     day = day or dt_util.now().date()
+    events = await async_fetch_events(hass, client, serial, day, limit)
+    for event in events:
+        if event["picture"]:
+            event["picture"] = f"{IMAGE_URL}?serial={serial}&url={_quote(event['picture'])}"
+    return {"entity_id": entity_id, "serial": serial, "date": day.isoformat(), "events": events}
+
+
+async def async_fetch_events(hass: HomeAssistant, client, serial: str, day: date, limit: int) -> list[dict[str, Any]]:
+    """Events of a device on a day, with the cloud URLs of their pictures."""
     events: list[dict[str, Any]] = []
     cursor = ""
     while len(events) < limit:
@@ -161,10 +170,7 @@ async def async_get_events(hass: HomeAssistant, entity_id: str, day: date | None
         if len(page) < 50 or not last or last == cursor:
             break
         cursor = last
-    for event in events:
-        if event["picture"]:
-            event["picture"] = f"{IMAGE_URL}?serial={serial}&url={_quote(event['picture'])}"
-    return {"entity_id": entity_id, "serial": serial, "date": day.isoformat(), "events": events}
+    return events
 
 
 def _quote(value: str) -> str:

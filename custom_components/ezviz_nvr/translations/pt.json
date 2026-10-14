@@ -24,7 +24,7 @@
   "options": {
     "step": {
       "init": {
-        "title": "Vídeo",
+        "title": "Vídeo e pessoas",
         "data": {
           "transcode": "Converter H.265 para H.264",
           "live_stream_1": "Fluxo em direto do canal 1",
@@ -42,10 +42,14 @@
           "live_stream_13": "Fluxo em direto do canal 13",
           "live_stream_14": "Fluxo em direto do canal 14",
           "live_stream_15": "Fluxo em direto do canal 15",
-          "live_stream_16": "Fluxo em direto do canal 16"
+          "live_stream_16": "Fluxo em direto do canal 16",
+          "faces": "Reconhecer pessoas nos eventos das câmaras cloud EZVIZ",
+          "faces_retention_days": "Dias a guardar as caras"
         },
         "data_description": {
-          "transcode": "always: converte todos os canais para H.264 com o go2rtc (só WebRTC; não funciona em HLS / acesso remoto)."
+          "transcode": "always: converte todos os canais para H.264 com o go2rtc (só WebRTC; não funciona em HLS / acesso remoto).",
+          "faces": "Procura caras nas imagens dos eventos das câmaras cloud EZVIZ (campainhas, ...) e agrupa-as por pessoa, para lhes dares nome. Corre no Home Assistant; precisa da integração EZVIZ.",
+          "faces_retention_days": "As caras mais antigas são apagadas; as últimas 10 caras de cada pessoa com nome ficam, para continuar a ser reconhecida."
         }
       }
     }
