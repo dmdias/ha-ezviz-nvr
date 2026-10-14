@@ -13,7 +13,7 @@
  * the cloud cameras saw, with every occurrence, and lets you name each person.
  */
 
-const CARD_VERSION = "0.4.0";
+const CARD_VERSION = "0.4.1";
 const DOMAIN = "ezviz_nvr";
 
 const TEXT = {
@@ -605,8 +605,8 @@ class EzvizNvrCard extends HTMLElement {
       input.addEventListener("input", () => ((this._drafts ??= {})[input.dataset.field] = input.value));
       input.addEventListener("click", (ev) => ev.stopPropagation());
     });
-    if (!pid) return;
     const name = root.querySelector("[data-name]");
+    if (!pid || !name) return; // the person may be gone (merged or deleted): the list is shown instead
     const save = () => {
       const before = this._people?.people.find((p) => p.id === pid)?.name || "";
       if (name.value.trim() === before) return;
@@ -877,7 +877,10 @@ const STYLES = `
   .occ-actions { display:flex; flex-wrap:wrap; gap:8px; align-items:center; justify-content:center; cursor:default; padding:0 10px; }
 `;
 
-customElements.define("ezviz-nvr-card", EzvizNvrCard);
-window.customCards = window.customCards || [];
-window.customCards.push({ type: "ezviz-nvr-card", name: "EZVIZ NVR", description: "Cameras, live view and recordings of an EZVIZ / Hikvision NVR", preview: false, documentationURL: "https://github.com/dmdias/ha-ezviz-nvr" });
+// The card can be loaded twice (dashboard resource and an older page): define it once
+if (!customElements.get("ezviz-nvr-card")) {
+  customElements.define("ezviz-nvr-card", EzvizNvrCard);
+  window.customCards = window.customCards || [];
+  window.customCards.push({ type: "ezviz-nvr-card", name: "EZVIZ NVR", description: "Cameras, live view and recordings of an EZVIZ / Hikvision NVR", preview: false, documentationURL: "https://github.com/dmdias/ha-ezviz-nvr" });
+}
 console.info(`%c EZVIZ-NVR-CARD %c ${CARD_VERSION} `, "background:#3d8bfd;color:#fff", "background:#1b2130;color:#fff");

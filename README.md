@@ -112,8 +112,8 @@ of each device.
 
 ## The card
 
-The integration loads the card on every dashboard, so there is no resource
-to add. Edit a dashboard → **Add card** → **EZVIZ NVR**, or use YAML:
+The integration adds the card to the dashboard resources and keeps it up to
+date, so there is nothing to register. Edit a dashboard → **Add card** → **EZVIZ NVR**, or use YAML:
 
 ```yaml
 type: custom:ezviz-nvr-card

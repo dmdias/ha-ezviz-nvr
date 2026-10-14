@@ -3,7 +3,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from homeassistant.components.frontend import add_extra_js_url, remove_extra_js_url
 from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_PORT, CONF_USERNAME, Platform
@@ -13,6 +12,7 @@ from homeassistant.helpers.httpx_client import get_async_client
 import voluptuous as vol
 
 from .api import NvrClient
+from .card import async_register_card, async_unregister_card
 from .const import CONF_FACES, CONF_FACES_RETENTION, CONF_RTSP_PORT, DOMAIN, FRONTEND_URL, SERVICE_GET_EVENTS, VERSION
 from .coordinator import NvrCoordinator
 from .events import EventImageView, async_get_events
@@ -69,18 +69,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         serial_number=info.serial,
     )
 
-    # The static path can only be registered once per run; the card URL is added
-    # again after a reload (e.g. a change of options), as unloading removes it
+    # The static path can only be registered once per run
     if not hass.data.get(f"{DOMAIN}_frontend"):
         await hass.http.async_register_static_paths(
             [StaticPathConfig(FRONTEND_URL, str(CARD_FILE), False)]
         )
-        hass.data[f"{DOMAIN}_frontend"] = True
-    if not hass.data.get(f"{DOMAIN}_card"):
         # The URL changes with the file, so browsers never keep an old card
         mtime = await hass.async_add_executor_job(lambda: int(CARD_FILE.stat().st_mtime))
-        hass.data[f"{DOMAIN}_card"] = f"{FRONTEND_URL}?v={VERSION}-{mtime}"
-        add_extra_js_url(hass, hass.data[f"{DOMAIN}_card"])
+        hass.data[f"{DOMAIN}_frontend"] = f"{FRONTEND_URL}?v={VERSION}-{mtime}"
+        await async_register_card(hass, FRONTEND_URL, hass.data[f"{DOMAIN}_frontend"])
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(_async_reload))
@@ -103,6 +100,10 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if unloaded and hass.data.get(f"{FACES}_entry") == entry.entry_id:
         await hass.data.pop(FACES).async_stop()
         hass.data.pop(f"{FACES}_entry")
-    if unloaded and not [e for e in hass.config_entries.async_loaded_entries(DOMAIN) if e.entry_id != entry.entry_id]:
-        remove_extra_js_url(hass, hass.data.pop(f"{DOMAIN}_card"))
     return unloaded
+
+
+async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """The last NVR removed: stop loading the card."""
+    if not [e for e in hass.config_entries.async_entries(DOMAIN) if e.entry_id != entry.entry_id]:
+        await async_unregister_card(hass, FRONTEND_URL, hass.data.get(f"{DOMAIN}_frontend", FRONTEND_URL))

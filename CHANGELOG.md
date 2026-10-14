@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.1
+
+- The card is registered as a dashboard resource (kept up to date by the
+  integration) instead of being written into the page when it is served. It
+  no longer goes missing ("Configuration error") in the companion apps when
+  the page was opened while Home Assistant was starting
+- The card can be loaded twice without an error
+- The person page no longer breaks the card when the person was merged or deleted
+
 ## 0.4.0
 
 - People statistics: visits per day, week or month for each person, in a
