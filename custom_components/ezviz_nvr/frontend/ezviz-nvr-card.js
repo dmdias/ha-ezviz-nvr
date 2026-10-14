@@ -13,7 +13,7 @@
  * the cloud cameras saw, with every occurrence, and lets you name each person.
  */
 
-const CARD_VERSION = "0.3.0";
+const CARD_VERSION = "0.4.0";
 const DOMAIN = "ezviz_nvr";
 
 const TEXT = {
@@ -22,7 +22,9 @@ const TEXT = {
     no_events: "Sem eventos neste dia.", cloud: "Cloud", no_picture: "Sem imagem",
     no_recordings: "Sem gravações neste dia.", loading: "A carregar…", none: "Nenhuma câmara do gravador encontrada.",
     tap_timeline: "Toca na linha do tempo para ver a gravação a partir dessa hora.", playing_from: "A reproduzir desde",
-    people: "Pessoas", person: "Pessoa", unknown: "Desconhecido", no_people: "Ainda não foram encontradas caras.", seen: "vezes",
+    people: "Pessoas", person: "Pessoa", unknown: "Desconhecido", no_people: "Ainda não foram encontradas caras.", seen: "visitas",
+    stats: "Estatísticas", day: "Dia", week: "Semana", month: "Mês", this_day: "Hoje", this_week: "Esta semana", this_month: "Este mês",
+    in_range: "No período", average: "Média", per_day: "por dia", per_week: "por semana", per_month: "por mês", events_word: "eventos", no_stats: "Sem visitas neste período.",
     last_seen: "Última vez", scan: "Analisar agora", scanning: "A analisar…", last_scan: "Última análise", name_placeholder: "Nome da pessoa",
     save: "Guardar", delete_person: "Apagar pessoa", confirm_delete: "Apagar esta pessoa e todas as suas caras?", not_this: "Não é esta pessoa? Mover para:",
     move: "Mover", remove_face: "Remover cara", with: "com", merged: "Juntou-se à pessoa com o mesmo nome.", all: "Todas", named: "Com nome",
@@ -32,7 +34,9 @@ const TEXT = {
     no_events: "No events on this day.", cloud: "Cloud", no_picture: "No picture",
     no_recordings: "No recordings on this day.", loading: "Loading…", none: "No NVR cameras found.",
     tap_timeline: "Tap the timeline to play the recording from that time.", playing_from: "Playing from",
-    people: "People", person: "Person", unknown: "Unknown", no_people: "No faces found yet.", seen: "times",
+    people: "People", person: "Person", unknown: "Unknown", no_people: "No faces found yet.", seen: "visits",
+    stats: "Statistics", day: "Day", week: "Week", month: "Month", this_day: "Today", this_week: "This week", this_month: "This month",
+    in_range: "In range", average: "Average", per_day: "per day", per_week: "per week", per_month: "per month", events_word: "events", no_stats: "No visits in this range.",
     last_seen: "Last seen", scan: "Scan now", scanning: "Scanning…", last_scan: "Last scan", name_placeholder: "Person's name",
     save: "Save", delete_person: "Delete person", confirm_delete: "Delete this person and all their faces?", not_this: "Not this person? Move to:",
     move: "Move", remove_face: "Remove face", with: "with", merged: "Merged with the person of the same name.", all: "All", named: "Named",
@@ -99,7 +103,7 @@ class EzvizNvrCard extends HTMLElement {
   }
 
   _isPeopleView() {
-    return this._view === "people" || this._view?.startsWith("person:");
+    return this._view === "people" || this._view === "stats" || this._view?.startsWith("person:");
   }
 
   get _t() {
@@ -188,6 +192,7 @@ class EzvizNvrCard extends HTMLElement {
     if (!this._hass || this._channels === undefined) body = `<div class="empty">${esc(this._t.loading)}</div>`;
     else if (!this._channels.length) body = `<div class="empty">${esc(this._t.none)}</div>`;
     else if (this._view === "people") body = this._peopleView();
+    else if (this._view === "stats") body = this._statsView();
     else if (this._view?.startsWith("person:")) body = this._personView(this._view.slice(7));
     else body = this._view ? this._playerView() : this._gridView();
     // Keep what is being typed (and the cursor) across re-renders
@@ -384,7 +389,7 @@ class EzvizNvrCard extends HTMLElement {
       <div class="head"><button class="back" data-back>‹ ${esc(t.back)}</button><b>${esc(t.people)}</b>
         <div class="seg">${seg("all")}${seg("named")}</div></div>
       <div class="timeline-head"><span class="hint">${st ? `${esc(t.last_scan)}: ${esc(when(st.last_scan))}${st.error ? ` · ⚠ ${esc(st.error)}` : ""}` : ""}</span>
-        <span class="spacer"></span><button data-scan ${this._scanning || st?.scanning ? "disabled" : ""}>${esc(this._scanning || st?.scanning ? t.scanning : t.scan)}</button></div>
+        <span class="spacer"></span><button data-stats-view>📊 ${esc(t.stats)}</button><button data-scan ${this._scanning || st?.scanning ? "disabled" : ""}>${esc(this._scanning || st?.scanning ? t.scanning : t.scan)}</button></div>
       ${body}`;
   }
 
@@ -426,9 +431,120 @@ class EzvizNvrCard extends HTMLElement {
         <span class="spacer"></span>
         <button class="back danger" data-delete-person>${esc(t.delete_person)}</button></div>
       <div class="hint">${person.count} ${esc(t.seen)} · ${esc(t.last_seen)}: ${esc(when(person.last))}${this._notice ? ` · ${esc(this._notice)}` : ""}</div>
+      ${this._personStats(pid)}
       ${body}
       <datalist id="ezviz-names">${names.map((n) => `<option value="${esc(n)}">`).join("")}</datalist>
       ${overlay}`;
+  }
+
+  /* ----- statistics ----- */
+
+  get _period() {
+    return this._statsPeriod || "day";
+  }
+
+  _periodCount(period) {
+    return { day: 30, week: 12, month: 12 }[period];
+  }
+
+  async _loadStats(key, msg) {
+    if (this._loadingStats?.[key]) return;
+    (this._loadingStats ??= {})[key] = true;
+    try {
+      (this._stats ??= {})[key] = await this._hass.callWS({ type: "ezviz_nvr/faces/stats", ...msg });
+    } catch (err) {
+      (this._stats ??= {})[key] = { error: err.message || String(err) };
+    }
+    this._loadingStats[key] = false;
+    this._render();
+  }
+
+  _stat(key, msg) {
+    const data = this._stats?.[key];
+    if (!data) this._loadStats(key, msg);
+    return data;
+  }
+
+  _bucketLabel(iso, period, long) {
+    const d = new Date(`${iso}T00:00:00`);
+    const lang = this._hass?.locale?.language || "en";
+    if (period === "month") return d.toLocaleDateString(lang, long ? { month: "long", year: "numeric" } : { month: "short" });
+    return long ? d.toLocaleDateString(lang, { day: "numeric", month: "short", year: "numeric" }) : `${pad(d.getDate())}/${pad(d.getMonth() + 1)}`;
+  }
+
+  /** Bars of visits per bucket (inline SVG, scales with the card). */
+  _bars(values, buckets, period, events, big) {
+    const max = Math.max(1, ...values);
+    const n = values.length;
+    const w = 10;
+    const h = big ? 60 : 22;
+    const bars = values
+      .map((v, i) => {
+        const bh = v ? Math.max(2, (v / max) * (h - 2)) : 0;
+        const title = `${this._bucketLabel(buckets[i], period, true)}: ${v} ${this._t.seen}${events ? ` · ${events[i]} ${this._t.events_word}` : ""}`;
+        return `<g><title>${esc(title)}</title><rect x="${i * w}" y="0" width="${w}" height="${h}" fill="transparent"></rect>
+          <rect x="${i * w + 1.5}" y="${h - bh}" width="${w - 3}" height="${bh}" rx="1.5" class="${i === n - 1 ? "bar now" : "bar"}"></rect></g>`;
+      })
+      .join("");
+    return `<svg class="bars ${big ? "big" : ""}" viewBox="0 0 ${n * w} ${h}" preserveAspectRatio="none">${bars}</svg>`;
+  }
+
+  _periodSeg() {
+    const t = this._t;
+    const seg = (p) => `<button data-period="${p}" class="${this._period === p ? "on" : ""}">${esc(t[p])}</button>`;
+    return `<div class="seg">${seg("day")}${seg("week")}${seg("month")}</div>`;
+  }
+
+  _personStats(pid) {
+    const t = this._t;
+    const period = this._period;
+    const data = this._stat(`${pid}:${period}`, { period, count: this._periodCount(period), person_id: pid });
+    const row = data?.people?.[0];
+    if (!row) return data?.error ? `<div class="hint">${esc(data.error)}</div>` : "";
+    const total = row.visits.reduce((a, b) => a + b, 0);
+    const current = row.visits[row.visits.length - 1];
+    const nowLabel = { day: t.this_day, week: t.this_week, month: t.this_month }[period];
+    const per = { day: t.per_day, week: t.per_week, month: t.per_month }[period];
+    const avg = (total / row.visits.length).toLocaleString(this._hass.locale?.language || "en", { maximumFractionDigits: 1 });
+    const b = data.buckets;
+    return `<div class="stats-box">
+      <div class="stats-head"><span><b>${current}</b> ${esc(nowLabel)} · <b>${total}</b> ${esc(t.in_range.toLowerCase())} · ${esc(t.average)} <b>${avg}</b> ${esc(per)}</span>
+        <span class="spacer"></span>${this._periodSeg()}</div>
+      ${this._bars(row.visits, b, period, row.events, true)}
+      <div class="axis"><span>${esc(this._bucketLabel(b[0], period))}</span><span>${esc(this._bucketLabel(b[Math.floor(b.length / 2)], period))}</span><span>${esc(this._bucketLabel(b[b.length - 1], period))}</span></div>
+    </div>`;
+  }
+
+  _statsView() {
+    const t = this._t;
+    const period = this._period;
+    const data = this._stat(`all:${period}`, { period, count: this._periodCount(period) });
+    const thumbs = Object.fromEntries((this._people?.people || []).map((p) => [p.id, p]));
+    const filter = this._peopleFilter || "all";
+    const rows = (data?.people || []).filter((r) => r.visits.some(Boolean) && (filter === "all" || r.name));
+    const nowLabel = { day: t.this_day, week: t.this_week, month: t.this_month }[period];
+    let body = `<div class="hint">${esc(data?.error || t.loading)}</div>`;
+    if (data?.people)
+      body = rows.length
+        ? `<div class="stats-table">
+            <div class="stats-row th"><span></span><span></span><span>${esc(this._bucketLabel(data.buckets[0], period))} → ${esc(nowLabel)}</span><span>${esc(nowLabel)}</span><span>${esc(t.in_range)}</span></div>
+            ${rows
+              .map((r) => {
+                const p = thumbs[r.id];
+                const label = r.name || `${t.unknown} ${r.label}`;
+                return `<button class="stats-row" data-person="${esc(r.id)}">
+                  ${p?.thumbnail ? `<img src="${p.thumbnail}" alt="">` : `<span class="noimg"></span>`}
+                  <span class="nm ${r.name ? "named" : ""}">${esc(label)}</span>
+                  ${this._bars(r.visits, data.buckets, period, r.events, false)}
+                  <b>${r.visits[r.visits.length - 1]}</b><b>${r.visits.reduce((a, b) => a + b, 0)}</b></button>`;
+              })
+              .join("")}</div>`
+        : `<div class="hint">${esc(t.no_stats)}</div>`;
+    const seg = (f) => `<button data-filter="${f}" class="${filter === f ? "on" : ""}">${esc(t[f])}</button>`;
+    return `
+      <div class="head"><button class="back" data-people>‹ ${esc(t.people)}</button><b>📊 ${esc(t.stats)}</b>
+        <span class="spacer"></span>${this._periodSeg()}<div class="seg">${seg("all")}${seg("named")}</div></div>
+      ${body}`;
   }
 
   async _openOcc(pid, i) {
@@ -450,6 +566,7 @@ class EzvizNvrCard extends HTMLElement {
       const res = await this._hass.callWS(msg);
       this._drafts = {};
       this._person = {};
+      this._stats = {};
       await this._loadPeople();
       if (after) after(res);
     } catch (err) {
@@ -461,9 +578,12 @@ class EzvizNvrCard extends HTMLElement {
   _bindPeople() {
     const root = this.shadowRoot;
     const pid = this._view?.startsWith("person:") ? this._view.slice(7) : null;
-    root.querySelectorAll("[data-people]").forEach((b) => (b.onclick = () => ((this._view = "people"), (this._zoomOcc = null), (this._notice = null), this._loadPeople())));
+    root.querySelectorAll("[data-people]").forEach((b) => (b.onclick = () => ((this._view = "people"), (this._zoomOcc = null), (this._notice = null), (this._stats = {}), this._loadPeople())));
     root.querySelectorAll("[data-person]").forEach((b) => (b.onclick = () => ((this._view = `person:${b.dataset.person}`), (this._zoomOcc = null), (this._notice = null), this._render())));
     root.querySelectorAll("[data-filter]").forEach((b) => (b.onclick = () => ((this._peopleFilter = b.dataset.filter), this._render())));
+    root.querySelectorAll("[data-period]").forEach((b) => (b.onclick = () => ((this._statsPeriod = b.dataset.period), this._render())));
+    const statsView = root.querySelector("[data-stats-view]");
+    if (statsView) statsView.onclick = () => ((this._view = "stats"), (this._stats = {}), this._render());
     const scan = root.querySelector("[data-scan]");
     if (scan)
       scan.onclick = async () => {
@@ -476,6 +596,7 @@ class EzvizNvrCard extends HTMLElement {
         }
         this._scanning = false;
         this._person = {};
+        this._stats = {};
         this._loadPeople();
       };
     // Typing goes to the inputs only: Home Assistant's keyboard shortcuts must not see the keys
@@ -738,6 +859,21 @@ const STYLES = `
   .pic img { display:block; }
   .box { position:absolute; border:2px solid #ffcc4d; border-radius:6px; box-shadow:0 0 0 2000px rgba(0,0,0,.15); pointer-events:none; }
   .occ-info { color:#cfd5e2; }
+  .stats-box { background:var(--panel); border-radius:12px; padding:10px 12px; margin:10px 0; }
+  .stats-head { display:flex; align-items:center; gap:8px; flex-wrap:wrap; font-size:13px; color:var(--muted); margin-bottom:8px; }
+  .stats-head b { color:var(--text); font-size:15px; }
+  .bars { width:100%; display:block; height:22px; }
+  .bars.big { height:90px; }
+  .bar { fill:#3d8bfd; opacity:.75; } .bar.now { fill:var(--accent); opacity:1; }
+  .axis { display:flex; justify-content:space-between; font-size:11px; color:var(--muted); margin-top:4px; }
+  .stats-table { display:flex; flex-direction:column; gap:6px; margin-top:8px; }
+  .stats-row { display:grid; grid-template-columns:36px minmax(90px,160px) 1fr 62px 72px; gap:10px; align-items:center; background:var(--panel); border:none;
+    border-radius:10px; padding:6px 10px; color:var(--text); font-family:inherit; font-size:14px; text-align:left; cursor:pointer; }
+  .stats-row.th { background:none; cursor:default; font-size:11px; color:var(--muted); padding-top:0; padding-bottom:0; }
+  .stats-row img, .stats-row .noimg { width:36px; height:36px; border-radius:50%; object-fit:cover; background:var(--panel2); }
+  .stats-row .nm { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; } .stats-row .nm.named { font-weight:600; }
+  .stats-row b { text-align:right; }
+  @media (max-width: 600px) { .stats-row { grid-template-columns:30px minmax(70px,1fr) 1fr 36px 40px; gap:6px; } .stats-row img, .stats-row .noimg { width:30px; height:30px; } }
   .occ-actions { display:flex; flex-wrap:wrap; gap:8px; align-items:center; justify-content:center; cursor:default; padding:0 10px; }
 `;
 

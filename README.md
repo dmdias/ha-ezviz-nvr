@@ -160,6 +160,20 @@ when last. Open a person to:
   - **Remove face** deletes it.
 - **Delete the person** with all their faces (administrators only).
 
+**Statistics**: **📊 Statistics** in the People view shows how often each
+person came:
+- **Day** covers the last 30 days, **Week** the last 12 weeks and **Month**
+  the last 12 months.
+- Each person has a small chart, the count for the current day, week or
+  month, and the total.
+- A person's page has a larger chart with the current period, the total and
+  the average.
+
+Statistics count **visits**: sightings of a person less than 15 minutes apart
+are one visit, so ringing and waiting at the door counts once. The sightings
+themselves (time, person, camera, no picture) are kept for 3 years, so the
+statistics stay after the faces are deleted.
+
 **Automations**: when a face is found in a new event, Home Assistant fires
 `ezviz_nvr_face_detected`:
 

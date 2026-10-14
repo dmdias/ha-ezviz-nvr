@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.4.0
+
+- People statistics: visits per day, week or month for each person, in a
+  new Statistics view (everyone, with a small chart per person) and on each
+  person's page (chart, current period, total and average)
+- Visits: sightings of a person less than 15 minutes apart count as one
+  visit, so several doorbell events of the same visit count once
+- Sightings (time, person, camera, without pictures) are kept for 3 years,
+  after the faces themselves are deleted, so the statistics stay
+- The People list shows visits instead of events
+
 ## 0.3.0
 
 - People: optional face recognition in the events of the EZVIZ cloud cameras

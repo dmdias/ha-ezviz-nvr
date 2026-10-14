@@ -49,6 +49,8 @@ MIN_FACE_PX = 28  # smaller faces are too blurred to tell people apart
 KEEP_PER_NAMED = 10  # faces of a named person kept after the retention period
 PROCESSED_PER_CAMERA = 3000
 FRESH_EVENT = timedelta(minutes=15)  # older events (backfill) do not fire EVENT_FACE
+VISIT_GAP = timedelta(minutes=15)  # sightings of a person closer than this are one visit
+SIGHTINGS_KEEP = timedelta(days=3 * 366)  # sightings (no picture) outlive the faces, for statistics
 
 
 def _key(*parts: str) -> str:
@@ -129,8 +131,11 @@ class FaceIndex:
 
     async def async_start(self) -> None:
         self._data = await self._store.async_load() or {}
-        for name, default in (("people", {}), ("faces", {}), ("events", {}), ("processed", {}), ("next_num", 1)):
+        for name, default in (("people", {}), ("faces", {}), ("events", {}), ("processed", {}), ("sightings", {}), ("next_num", 1)):
             self._data.setdefault(name, default)
+        # Sightings: when each face was seen (kept after the face itself is deleted)
+        for fid, face in self._data["faces"].items():
+            self._data["sightings"].setdefault(fid, {"person": face["person"], "event": face["event"], "time": face["time"], "camera": face["camera"]})
         self._unsub = async_track_time_interval(self.hass, self._async_tick, SCAN_INTERVAL)
         self.hass.async_create_background_task(self.async_scan(), "ezviz_nvr faces first scan")
 
@@ -231,6 +236,7 @@ class FaceIndex:
                 "similarity": round(similarity, 3),
                 "vec": _vec_encode(face["vec"]),
             }
+            self._data["sightings"][face_id] = {"person": person, "event": event_key, "time": event["time"], "camera": entity_id}
             self._matrix = None
             face_ids.append(face_id)
             self._announce(person, face_id, new_person)
@@ -304,12 +310,18 @@ class FaceIndex:
                 if old and i >= keep:
                     doomed.append(fid)
         if doomed:
-            self._remove_faces(doomed)
+            self._remove_faces(doomed, forget=False)
+        old = (dt_util.now() - SIGHTINGS_KEEP).isoformat()
+        for fid in [f for f, s in self._data["sightings"].items() if (s.get("time") or "") < old]:
+            del self._data["sightings"][fid]
 
-    def _remove_faces(self, face_ids: list[str]) -> None:
+    def _remove_faces(self, face_ids: list[str], forget: bool = True) -> None:
+        """Delete faces and their pictures; forget=False keeps their sightings (retention)."""
         files = []
         for fid in face_ids:
             face = self._data["faces"].pop(fid, None)
+            if forget:
+                self._data["sightings"].pop(fid, None)
             if not face:
                 continue
             files.append(f"crops/{fid}.jpg")
@@ -322,6 +334,8 @@ class FaceIndex:
         used = {f["person"] for f in self._data["faces"].values()}
         for pid in [p for p, info in self._data["people"].items() if p not in used and not info.get("name")]:
             del self._data["people"][pid]
+            for fid in [f for f, s in self._data["sightings"].items() if s["person"] == pid]:
+                del self._data["sightings"][fid]
         self._matrix = None
         self.hass.async_add_executor_job(self._unlink, files)
 
@@ -349,9 +363,9 @@ class FaceIndex:
         name = name.strip()
         target = self._by_name(name, pid) if name else None
         if target:
-            for face in self._data["faces"].values():
-                if face["person"] == pid:
-                    face["person"] = target
+            for record in (*self._data["faces"].values(), *self._data["sightings"].values()):
+                if record["person"] == pid:
+                    record["person"] = target
             del self._data["people"][pid]
             pid = target
         else:
@@ -368,6 +382,8 @@ class FaceIndex:
             target = self._new_person()
             self._data["people"][target]["name"] = name.strip()
         face["person"] = target
+        if face_id in self._data["sightings"]:
+            self._data["sightings"][face_id]["person"] = target
         if not any(f["person"] == old for f in self._data["faces"].values()) and not self._data["people"].get(old, {}).get("name"):
             self._data["people"].pop(old, None)
         self._save()
@@ -376,6 +392,8 @@ class FaceIndex:
     def delete_person(self, pid: str) -> None:
         self._remove_faces([fid for fid, f in self._data["faces"].items() if f["person"] == pid])
         self._data["people"].pop(pid, None)
+        for fid in [f for f, s in self._data["sightings"].items() if s["person"] == pid]:
+            del self._data["sightings"][fid]
         self._save()
 
     def delete_face(self, face_id: str) -> None:
@@ -407,25 +425,101 @@ class FaceIndex:
         for fid, face in self._data["faces"].items():
             faces_of.setdefault(face["person"], []).append((fid, face))
         out = []
+        visits = self._visits()
         for pid, info in self._data["people"].items():
             faces = faces_of.get(pid, [])
             if not faces:
                 continue
-            times = sorted(f.get("time") or "" for _, f in faces)
+            times = [v[0] for v in visits.get(pid, [])] or sorted(f.get("time") or "" for _, f in faces)
             out.append(
                 {
                     "id": pid,
                     "name": info.get("name", ""),
                     "label": self.label(pid),
-                    "count": len({f["event"] for _, f in faces}),
+                    "count": len(visits.get(pid, [])),
                     "first": times[0],
-                    "last": times[-1],
+                    "last": visits[pid][-1][1] if visits.get(pid) else times[-1],
                     "cameras": sorted({f["camera"] for _, f in faces}),
                     "thumbnail": self._cover(faces),
                 }
             )
         out.sort(key=lambda p: p["last"], reverse=True)
         return out
+
+    def _visits(self) -> dict[str, list[tuple[str, str, int]]]:
+        """Per person, the visits (start, end, events): sightings closer than VISIT_GAP are one visit."""
+        events: dict[str, set[str]] = {}
+        when: dict[tuple[str, str], str] = {}
+        for s in self._data["sightings"].values():
+            if not s.get("time"):
+                continue
+            events.setdefault(s["person"], set()).add(s["event"])
+            key = (s["person"], s["event"])
+            when[key] = min(when.get(key, s["time"]), s["time"])
+        out: dict[str, list[tuple[str, str, int]]] = {}
+        for pid, evs in events.items():
+            visits: list[list] = []
+            last = None
+            for t in sorted(when[(pid, e)] for e in evs):
+                moment = datetime.fromisoformat(t)
+                if visits and last is not None and moment - last <= VISIT_GAP:
+                    visits[-1][1] = t
+                    visits[-1][2] += 1
+                else:
+                    visits.append([t, t, 1])
+                last = moment
+            out[pid] = [tuple(v) for v in visits]
+        return out
+
+    def stats(self, period: str, count: int, person: str | None = None) -> dict[str, Any]:
+        """Visits and events per day / week / month, for the last `count` periods (local time)."""
+        tz = dt_util.get_default_time_zone()
+        today = dt_util.now().date()
+
+        def bucket_start(day):
+            if period == "week":
+                return day - timedelta(days=day.weekday())
+            if period == "month":
+                return day.replace(day=1)
+            return day
+
+        starts = []
+        cursor = bucket_start(today)
+        for _ in range(count):
+            starts.append(cursor)
+            if period == "week":
+                cursor = cursor - timedelta(days=7)
+            elif period == "month":
+                cursor = (cursor - timedelta(days=1)).replace(day=1)
+            else:
+                cursor = cursor - timedelta(days=1)
+        starts.reverse()
+        index = {start: i for i, start in enumerate(starts)}
+        rows = []
+        for pid, visits in self._visits().items():
+            if pid not in self._data["people"] or (person and pid != person):
+                continue
+            v_counts, e_counts = [0] * count, [0] * count
+            for start, _end, n in visits:
+                i = index.get(bucket_start(datetime.fromisoformat(start).astimezone(tz).date()))
+                if i is not None:
+                    v_counts[i] += 1
+                    e_counts[i] += n
+            info = self._data["people"][pid]
+            rows.append(
+                {
+                    "id": pid,
+                    "name": info.get("name", ""),
+                    "label": self.label(pid),
+                    "visits": v_counts,
+                    "events": e_counts,
+                    "total_visits": len(visits),
+                    "first": visits[0][0] if visits else None,
+                    "last": visits[-1][1] if visits else None,
+                }
+            )
+        rows.sort(key=lambda r: (sum(r["visits"]), r["last"] or ""), reverse=True)
+        return {"period": period, "buckets": [s.isoformat() for s in starts], "people": rows}
 
     def occurrences(self, pid: str, limit: int = 300) -> list[dict[str, Any]]:
         """Faces of a person, newest first (thumbnail = face id)."""
@@ -557,5 +651,19 @@ def async_register_websocket(hass: HomeAssistant, get_index) -> None:
         added = await index.async_scan(msg["days"])
         connection.send_result(msg["id"], {"added": added, "status": index.status()})
 
-    for command in (ws_people, ws_person, ws_rename, ws_assign, ws_delete, ws_scan):
+    @websocket_api.websocket_command(
+        {
+            vol.Required("type"): "ezviz_nvr/faces/stats",
+            vol.Optional("period", default="day"): vol.In(["day", "week", "month"]),
+            vol.Optional("count", default=30): vol.All(int, vol.Range(min=1, max=120)),
+            vol.Optional("person_id"): str,
+        }
+    )
+    @callback
+    def ws_stats(hass, connection, msg):
+        if (index := _index(connection, msg)) is None:
+            return
+        connection.send_result(msg["id"], index.stats(msg["period"], msg["count"], msg.get("person_id")))
+
+    for command in (ws_people, ws_person, ws_rename, ws_assign, ws_delete, ws_scan, ws_stats):
         websocket_api.async_register_command(hass, command)
