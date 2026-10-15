@@ -130,7 +130,8 @@ def parse_events(payload: Any) -> tuple[list[dict[str, Any]], str | None]:
         events.append(
             {
                 "id": str(msg_id) if msg_id is not None else None,
-                "time": _event_time(_first(flat, "time", "msgTime", "alarmStartTime", "alarmTime", "createTime", "timeStr", "occurTime")),
+                # timeStr is local time; the epoch fields are local time written as if UTC
+                "time": _event_time(_first(flat, "timeStr", "alarmStartTimeStr", "time", "msgTime", "alarmStartTime", "alarmTime", "createTime", "occurTime")),
                 "title": _first(flat, "alarmName", "title", "subTypeName", "msgTypeName", "typeName", "detail", "content", "sampleName"),
                 "video": bool(_first(flat, "isVideo")),
                 "type": _first(flat, "alarmType", "subType", "msgType", "type"),

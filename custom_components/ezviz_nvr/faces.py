@@ -133,11 +133,35 @@ class FaceIndex:
         self._data = await self._store.async_load() or {}
         for name, default in (("people", {}), ("faces", {}), ("events", {}), ("processed", {}), ("sightings", {}), ("next_num", 1)):
             self._data.setdefault(name, default)
+        if self._data.get("times") != 2:
+            self._fix_times()
         # Sightings: when each face was seen (kept after the face itself is deleted)
         for fid, face in self._data["faces"].items():
             self._data["sightings"].setdefault(fid, {"person": face["person"], "event": face["event"], "time": face["time"], "camera": face["camera"]})
         self._unsub = async_track_time_interval(self.hass, self._async_tick, SCAN_INTERVAL)
         self.hass.async_create_background_task(self.async_scan(), "ezviz_nvr faces first scan")
+
+    def _fix_times(self) -> None:
+        """Times stored before 0.4.2 came from EZVIZ epochs that are local time written
+        as UTC, so they are ahead by the UTC offset: move them back."""
+
+        def fix(value):
+            try:
+                moment = datetime.fromisoformat(value)
+            except (TypeError, ValueError):
+                return value
+            offset = moment.utcoffset()
+            if offset is None:
+                return value
+            wall = (moment - offset).replace(tzinfo=None)
+            return wall.replace(tzinfo=dt_util.get_default_time_zone()).isoformat()
+
+        for group in ("faces", "sightings", "events"):
+            for record in self._data.get(group, {}).values():
+                if record.get("time"):
+                    record["time"] = fix(record["time"])
+        self._data["times"] = 2
+        self._save()
 
     async def async_stop(self) -> None:
         if self._unsub:

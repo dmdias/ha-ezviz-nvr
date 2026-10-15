@@ -13,7 +13,7 @@
  * the cloud cameras saw, with every occurrence, and lets you name each person.
  */
 
-const CARD_VERSION = "0.4.1";
+const CARD_VERSION = "0.4.2";
 const DOMAIN = "ezviz_nvr";
 
 const TEXT = {

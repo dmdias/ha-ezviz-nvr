@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.2
+
+- Fix: event times were one hour ahead in summer time. The EZVIZ cloud sends
+  local time written as UTC in its epoch fields; the local time string is now
+  used. Times already stored (faces, occurrences, statistics) are corrected
+  once, automatically
+
 ## 0.4.1
 
 - The card is registered as a dashboard resource (kept up to date by the

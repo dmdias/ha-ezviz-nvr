@@ -2,7 +2,7 @@
 from typing import Final
 
 DOMAIN: Final = "ezviz_nvr"
-VERSION: Final = "0.4.1"
+VERSION: Final = "0.4.2"
 
 CONF_RTSP_PORT: Final = "rtsp_port"
 CONF_TRANSCODE: Final = "transcode"  # never | always
