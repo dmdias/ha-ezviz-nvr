@@ -242,6 +242,7 @@ class FaceIndex:
         event_key = _key(serial, event["id"])
         files: dict[str, bytes] = {f"events/{event_key}.jpg": picture}
         face_ids = []
+        announce: list[tuple[str, str, bool]] = []
         for face in faces:
             face_id = uuid.uuid4().hex[:12]
             files[f"crops/{face_id}.jpg"] = face.pop("crop")
@@ -263,9 +264,12 @@ class FaceIndex:
             self._data["sightings"][face_id] = {"person": person, "event": event_key, "time": event["time"], "camera": entity_id}
             self._matrix = None
             face_ids.append(face_id)
-            self._announce(person, face_id, new_person)
+            announce.append((person, face_id, new_person))
         self._data["events"][event_key] = {"camera": entity_id, "time": event["time"], "title": event.get("title"), "faces": face_ids}
         await self.hass.async_add_executor_job(self._write, files)
+        # Only now: automations may attach the face picture to a notification
+        for person, face_id, new_person in announce:
+            self._announce(person, face_id, new_person)
         return len(face_ids)
 
     def _write(self, files: dict[str, bytes]) -> None:

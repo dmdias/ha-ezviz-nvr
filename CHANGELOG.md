@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.3
+
+- Fix: `ezviz_nvr_face_detected` was fired before the face picture was saved,
+  so notifications that attach it (e.g. Pushover) could fail with "Failed to
+  open attachment". The event is now fired once the pictures are on disk
+
 ## 0.4.2
 
 - Fix: event times were one hour ahead in summer time. The EZVIZ cloud sends
