@@ -144,7 +144,7 @@ Turn on **Recognise people in the events of the EZVIZ cloud cameras** in the
 options. It needs the Home Assistant EZVIZ integration.
 
 **How it works**
-- Every 2 minutes the new events of the EZVIZ cloud cameras (doorbells, ...)
+- Every 30 seconds the new events of the EZVIZ cloud cameras (doorbells, ...)
   are read. The first time, the last 14 days are read.
 - Each event picture is searched for faces.
 - Each face joins the person whose earlier faces look most alike, or starts a

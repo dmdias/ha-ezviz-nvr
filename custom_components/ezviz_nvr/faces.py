@@ -41,7 +41,8 @@ STORAGE_VERSION = 1
 PICTURE_URL = "/api/ezviz_nvr/faces/picture"
 EVENT_FACE = "ezviz_nvr_face_detected"
 
-SCAN_INTERVAL = timedelta(minutes=2)
+SCAN_INTERVAL = timedelta(seconds=30)
+YESTERDAY_EVERY = 20  # scans: yesterday is read again every 10 minutes (events just before midnight)
 BACKFILL_DAYS = 14
 MATCH_THRESHOLD = 0.42  # cosine similarity of SFace vectors for the same person
 MIN_SCORE = 0.85  # detector confidence
@@ -123,6 +124,7 @@ class FaceIndex:
         self._failures: dict[str, int] = {}
         self._matrix: np.ndarray | None = None
         self._matrix_ids: list[str] = []
+        self._scans = 0
         self.scanning = False
         self.last_scan: datetime | None = None
         self.last_error: str | None = None
@@ -200,7 +202,11 @@ class FaceIndex:
             return 0
         self.last_error = None
         if days is None:
-            days = BACKFILL_DAYS if not self._data["processed"] else 2
+            self._scans += 1
+            if not self._data["processed"]:
+                days = BACKFILL_DAYS
+            else:
+                days = 2 if self._scans % YESTERDAY_EVERY == 1 else 1
         today = dt_util.now().date()
         added = 0
         for serial, entity_id in cloud_cameras(self.hass).items():

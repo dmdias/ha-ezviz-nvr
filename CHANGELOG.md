@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.4
+
+- New events of the cloud cameras are read every 30 seconds instead of every
+  2 minutes, so face notifications arrive sooner. Each scan reads only
+  today's events; yesterday is read again every 10 minutes
+
 ## 0.4.3
 
 - Fix: `ezviz_nvr_face_detected` was fired before the face picture was saved,
