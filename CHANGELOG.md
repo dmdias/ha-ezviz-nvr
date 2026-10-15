@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.5
+
+- Integration icon and logo (shown in HACS and in Devices & services)
+
 ## 0.4.4
 
 - New events of the cloud cameras are read every 30 seconds instead of every
