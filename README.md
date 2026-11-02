@@ -136,6 +136,8 @@ It looks best in a view of type **Panel**.
   - The grid shows the last motion picture.
   - Tapping one opens the day's events with their pictures, time and type.
   - Tap a picture to enlarge it, or use **◀ ▶** to change the day.
+  - Zoom into an open picture by pinching, scrolling or double-tapping;
+    drag to move around it.
   - These cameras need the Home Assistant EZVIZ integration.
 
 ## People (face recognition)
@@ -155,7 +157,8 @@ when last. Open a person to:
 - **Name them**: type the name and press **Save** or Enter. Giving two people
   the same name merges them. This is the usual fix when the same person was
   split in two, for example with and without sunglasses.
-- **Open an occurrence**: the full picture, with the face marked. From there:
+- **Open an occurrence**: the full picture, with the face marked (pinch,
+  scroll or double-tap to zoom). From there:
   - **Move to** puts a face that went to the wrong person under the right name.
   - **Remove face** deletes it.
 - **Delete the person** with all their faces (administrators only).

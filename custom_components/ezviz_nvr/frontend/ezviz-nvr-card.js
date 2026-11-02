@@ -13,7 +13,7 @@
  * the cloud cameras saw, with every occurrence, and lets you name each person.
  */
 
-const CARD_VERSION = "0.4.5";
+const CARD_VERSION = "0.4.6";
 const DOMAIN = "ezviz_nvr";
 
 const TEXT = {
@@ -28,6 +28,7 @@ const TEXT = {
     last_seen: "Última vez", scan: "Analisar agora", scanning: "A analisar…", last_scan: "Última análise", name_placeholder: "Nome da pessoa",
     save: "Guardar", delete_person: "Apagar pessoa", confirm_delete: "Apagar esta pessoa e todas as suas caras?", not_this: "Não é esta pessoa? Mover para:",
     move: "Mover", remove_face: "Remover cara", with: "com", merged: "Juntou-se à pessoa com o mesmo nome.", all: "Todas", named: "Com nome",
+    close: "Fechar", zoom_hint: "Pinça, roda do rato ou duplo toque para ampliar",
   },
   en: {
     live: "Live", playback: "Playback", back: "Cameras", offline: "Offline", disk: "Disk", events: "Events",
@@ -40,6 +41,7 @@ const TEXT = {
     last_seen: "Last seen", scan: "Scan now", scanning: "Scanning…", last_scan: "Last scan", name_placeholder: "Person's name",
     save: "Save", delete_person: "Delete person", confirm_delete: "Delete this person and all their faces?", not_this: "Not this person? Move to:",
     move: "Move", remove_face: "Remove face", with: "with", merged: "Merged with the person of the same name.", all: "All", named: "Named",
+    close: "Close", zoom_hint: "Pinch, scroll or double-tap to zoom",
   },
 };
 
@@ -329,7 +331,11 @@ class EzvizNvrCard extends HTMLElement {
       <div class="timeline-head"><button data-day="-1">◀</button><span>${esc(isoDay(this._day))}</span><button data-day="1" ${today ? "disabled" : ""}>▶</button>
         <span class="spacer"></span><span class="hint">${data?.events ? data.events.length : ""}</span></div>
       ${body}
-      ${zoom && zoom.signed ? `<div class="overlay" data-close><img src="${esc(zoom.signed)}" alt=""><div>${esc(zoom.title || "")} · ${zoom.time ? hhmmss(new Date(zoom.time)) : ""}</div></div>` : ""}`;
+      ${zoom && zoom.signed
+        ? `<div class="overlay" data-close><button class="close" title="${esc(t.close)}">✕</button>
+            <div class="pic" data-stop data-zoom><div class="zoom-inner"><img src="${esc(zoom.signed)}" alt=""></div></div>
+            <div>${esc(zoom.title || "")} · ${zoom.time ? hhmmss(new Date(zoom.time)) : ""}</div><div class="zoom-hint">${esc(t.zoom_hint)}</div></div>`
+        : ""}`;
   }
 
   /* ----- people (face recognition) ----- */
@@ -412,8 +418,10 @@ class EzvizNvrCard extends HTMLElement {
     const names = [...new Set((this._people?.people || []).map((p) => p.name).filter(Boolean))];
     const occ = this._zoomOcc != null && Array.isArray(rows) ? rows[this._zoomOcc] : null;
     const overlay = occ
-      ? `<div class="overlay" data-close>
-          <div class="pic" data-stop>${occ.signed ? `<img src="${esc(occ.signed)}" alt="" data-pic><i class="box" hidden></i>` : `<div class="hint">${esc(t.loading)}</div>`}</div>
+      ? `<div class="overlay" data-close><button class="close" title="${esc(t.close)}">✕</button>
+          ${occ.signed
+            ? `<div class="pic" data-stop data-zoom><div class="zoom-inner"><img src="${esc(occ.signed)}" alt="" data-pic><i class="box" hidden></i></div></div>`
+            : `<div class="pic" data-stop><div class="hint">${esc(t.loading)}</div></div>`}
           <div class="occ-info" data-stop>${esc(when(occ.time))} · ${esc(this._camName(occ.camera))}${occ.title ? ` · ${esc(occ.title)}` : ""}</div>
           <div class="occ-actions" data-stop>
             <span>${esc(t.not_this)}</span>
@@ -738,6 +746,102 @@ class EzvizNvrCard extends HTMLElement {
 
   /* ----- events ----- */
 
+  /** Pinch, wheel and double-tap zoom on the open picture; survives re-renders of the same picture. */
+  _bindZoom() {
+    const frame = this.shadowRoot.querySelector("[data-zoom]");
+    if (!frame) return;
+    const inner = frame.firstElementChild;
+    const img = inner.querySelector("img");
+    const key = img?.getAttribute("src");
+    const st = this._zoomState?.key === key ? this._zoomState : { key, s: 1, x: 0, y: 0 };
+    this._zoomState = st;
+    const MAX = 6;
+    const apply = () => {
+      const w = frame.clientWidth;
+      const h = frame.clientHeight;
+      st.s = Math.min(MAX, Math.max(1, st.s));
+      if (w && h) {
+        st.x = Math.min(0, Math.max(w - w * st.s, st.x));
+        st.y = Math.min(0, Math.max(h - h * st.s, st.y));
+      }
+      inner.style.transform = `translate(${st.x}px, ${st.y}px) scale(${st.s})`;
+      frame.classList.toggle("zoomed", st.s > 1);
+    };
+    const zoomAt = (cx, cy, s) => {
+      const k = Math.min(MAX, Math.max(1, s)) / st.s;
+      st.x = cx - (cx - st.x) * k;
+      st.y = cy - (cy - st.y) * k;
+      st.s *= k;
+      apply();
+    };
+    const rel = (ev) => {
+      const r = frame.getBoundingClientRect();
+      return [ev.clientX - r.left, ev.clientY - r.top];
+    };
+    const pts = new Map();
+    let pinch = null;
+    let down = null;
+    let lastTap = null;
+    frame.onpointerdown = (ev) => {
+      try {
+        frame.setPointerCapture(ev.pointerId);
+      } catch (err) {
+        /* pointer already gone */
+      }
+      pts.set(ev.pointerId, rel(ev));
+      pinch = null;
+      if (pts.size === 2) {
+        const [a, b] = [...pts.values()];
+        pinch = { d: Math.hypot(a[0] - b[0], a[1] - b[1]), mid: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2] };
+      }
+      down = pts.size === 1 ? { at: rel(ev), moved: false } : null;
+    };
+    frame.onpointermove = (ev) => {
+      if (!pts.has(ev.pointerId)) return;
+      const prev = pts.get(ev.pointerId);
+      const cur = rel(ev);
+      pts.set(ev.pointerId, cur);
+      if (down && Math.hypot(cur[0] - down.at[0], cur[1] - down.at[1]) > 8) down.moved = true;
+      if (pts.size === 1) {
+        if (st.s > 1) {
+          st.x += cur[0] - prev[0];
+          st.y += cur[1] - prev[1];
+          apply();
+        }
+        return;
+      }
+      const [a, b] = [...pts.values()];
+      const d = Math.hypot(a[0] - b[0], a[1] - b[1]);
+      const mid = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+      if (pinch && pinch.d) {
+        st.x += mid[0] - pinch.mid[0];
+        st.y += mid[1] - pinch.mid[1];
+        zoomAt(mid[0], mid[1], (st.s * d) / pinch.d);
+      }
+      pinch = { d, mid };
+    };
+    const up = (ev) => {
+      if (!pts.delete(ev.pointerId)) return;
+      pinch = null;
+      if (ev.type !== "pointerup" || !down || down.moved || pts.size) return;
+      // Double tap (or double click): zoom in on that spot, or back out
+      const now = Date.now();
+      if (lastTap && now - lastTap.t < 350 && Math.hypot(down.at[0] - lastTap.at[0], down.at[1] - lastTap.at[1]) < 30) {
+        zoomAt(down.at[0], down.at[1], st.s > 1 ? 1 : 2.5);
+        lastTap = null;
+      } else lastTap = { t: now, at: down.at };
+      down = null;
+    };
+    frame.onpointerup = up;
+    frame.onpointercancel = up;
+    frame.onwheel = (ev) => {
+      ev.preventDefault();
+      const [x, y] = rel(ev);
+      zoomAt(x, y, st.s * Math.exp(-ev.deltaY / 300));
+    };
+    img && !img.complete ? img.addEventListener("load", apply, { once: true }) : apply();
+  }
+
   _bind() {
     const root = this.shadowRoot;
     this._bindPeople();
@@ -759,7 +863,13 @@ class EzvizNvrCard extends HTMLElement {
     );
     root.querySelectorAll("[data-event]").forEach((b) => (b.onclick = () => ((this._zoomEvent = Number(b.dataset.event)), this._render())));
     const overlay = root.querySelector("[data-close]");
-    if (overlay && !this._isPeopleView()) overlay.onclick = () => ((this._zoomEvent = null), this._render());
+    if (overlay && !this._isPeopleView())
+      overlay.onclick = (ev) => {
+        if (ev.target.closest("[data-stop]")) return;
+        this._zoomEvent = null;
+        this._render();
+      };
+    this._bindZoom();
     const ch = this._channels?.find((c) => c.key === this._view);
     root.querySelectorAll("[data-nudge]").forEach(
       (b) =>
@@ -842,7 +952,14 @@ const STYLES = `
     background:linear-gradient(transparent, rgba(0,0,0,.8)); white-space:nowrap; overflow:hidden; }
   .event-bar span { color:#cfd5e2; overflow:hidden; text-overflow:ellipsis; }
   .overlay { position:fixed; inset:0; z-index:10; background:rgba(0,0,0,.88); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; cursor:zoom-out; color:#fff; font-size:14px; }
-  .overlay img { max-width:96vw; max-height:84vh; border-radius:8px; }
+  .overlay img { max-width:96vw; max-height:80vh; border-radius:8px; }
+  .overlay .close { position:absolute; top:12px; right:12px; width:40px; height:40px; border:none; border-radius:50%; background:rgba(255,255,255,.15);
+    color:#fff; font-size:20px; cursor:pointer; z-index:1; }
+  [data-zoom] { touch-action:none; cursor:zoom-in; user-select:none; -webkit-user-select:none; }
+  [data-zoom].zoomed { cursor:grab; }
+  [data-zoom] img { -webkit-user-drag:none; pointer-events:none; }
+  .zoom-inner { position:relative; transform-origin:0 0; }
+  .zoom-hint { color:#9aa3b5; font-size:12px; }
   .people { display:grid; gap:10px; grid-template-columns:repeat(auto-fill, minmax(130px, 1fr)); margin-top:8px; }
   .person { padding:8px; border:none; border-radius:12px; background:var(--panel); color:var(--text); cursor:pointer; font-family:inherit; text-align:center; }
   .person img, .person .snap { width:100%; aspect-ratio:1; object-fit:cover; border-radius:10px; display:block; }

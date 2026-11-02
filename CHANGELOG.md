@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.6
+
+- Zoom on the open pictures (events and face occurrences): pinch, mouse
+  wheel or double-tap, then drag to move around; the face box follows the
+  zoom. A ✕ button closes the picture
+
 ## 0.4.5
 
 - Integration icon and logo (shown in HACS and in Devices & services)
