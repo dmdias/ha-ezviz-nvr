@@ -2,6 +2,11 @@
 
 ## 0.4.7
 
+- Cloud cameras with a local stream get **Live / Events** buttons in the card.
+  The first view is set with `cloud_view` (`events` or `live`) or per camera
+  (`cloud_cameras: [{entity: camera.x, view: live}]`), and the last choice is
+  remembered in the browser. Cameras without a local stream (doorbells) only
+  show their events, as before
 - Cloud camera events with more than one page (over 50 events in a day) failed
   with "400 Bad Request", so the event list did not open and the face scan
   logged "Face scan failed" every 30 seconds. The next page is now asked with

@@ -120,6 +120,9 @@ type: custom:ezviz-nvr-card
 columns: 3   # optional, maximum grid columns (default 2); tiles wrap on narrow screens
 cloud_cameras:   # optional, EZVIZ cloud cameras to list (default: all but the NVR)
   - camera.front_doorbell
+  - entity: camera.garden   # or with the view it opens on
+    view: live
+cloud_view: events   # optional, what the cloud cameras open on: events (default) or live
 ```
 
 It looks best in a view of type **Panel**.
@@ -135,6 +138,11 @@ It looks best in a view of type **Panel**.
 - **EZVIZ cloud cameras** (tagged *Cloud*), such as a doorbell:
   - The grid shows the last motion picture.
   - Tapping one opens the day's events with their pictures, time and type.
+  - Cameras with a local stream (added with their password to the EZVIZ
+    integration) also have **Live / Events** buttons. They open on
+    `cloud_view` (or the camera's own `view`), and the last choice is
+    remembered in the browser. Cameras without a local stream, such as most
+    doorbells, only show their events.
   - Tap a picture to enlarge it, or use **◀ ▶** to change the day.
   - Zoom into an open picture by pinching, scrolling or double-tapping;
     drag to move around it.

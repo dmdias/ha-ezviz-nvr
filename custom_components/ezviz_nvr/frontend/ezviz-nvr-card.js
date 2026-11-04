@@ -8,12 +8,23 @@
  *   type: custom:ezviz-nvr-card
  *   columns: 2          # optional, maximum camera grid columns (tiles wrap on narrow screens)
  *   cloud_cameras: [camera.doorbell]   # optional, EZVIZ cloud cameras to list (default: all but the NVR)
+ *   cloud_view: events  # optional, what a cloud camera opens on: events (default) or live
+ *
+ * Each cloud camera can also be given its own first view:
+ *
+ *   cloud_cameras:
+ *     - entity: camera.front
+ *       view: live
+ *     - camera.doorbell
+ *
+ * Cloud cameras with a local stream (added with their password to the EZVIZ
+ * integration) get Live / Events buttons; the last choice is remembered.
  *
  * With face recognition on (integration options), a "People" view lists who
  * the cloud cameras saw, with every occurrence, and lets you name each person.
  */
 
-const CARD_VERSION = "0.4.6";
+const CARD_VERSION = "0.4.7";
 const DOMAIN = "ezviz_nvr";
 
 const TEXT = {
@@ -141,11 +152,14 @@ class EzvizNvrCard extends HTMLElement {
     // Cameras of the EZVIZ cloud account that are not the NVR itself (doorbells, ...)
     const byDevice = {};
     for (const e of registry) if (e.device_id && !e.disabled_by) (byDevice[e.device_id] ??= []).push(e);
-    const wanted = this._config.cloud_cameras;
+    // cloud_cameras items are entity ids or { entity, view }
+    const wanted = Array.isArray(this._config.cloud_cameras)
+      ? this._config.cloud_cameras.map((w) => (typeof w === "string" ? { entity: w } : w)).filter((w) => w?.entity)
+      : null;
     this._cloud = registry
       .filter((e) => e.platform === "ezviz" && e.entity_id.startsWith("camera.") && !e.disabled_by)
       .filter((e) => {
-        if (Array.isArray(wanted)) return wanted.includes(e.entity_id);
+        if (wanted) return wanted.some((w) => w.entity === e.entity_id);
         const dev = this._hass.devices?.[e.device_id];
         const model = String(dev?.model || "");
         return !/^HWN|NVR/i.test(dev?.name || "") && !/^(UNKNOWN|HWN)/i.test(model);
@@ -154,11 +168,54 @@ class EzvizNvrCard extends HTMLElement {
         key: `cloud:${e.entity_id}`,
         entity: e.entity_id,
         image: (byDevice[e.device_id] || []).find((x) => x.entity_id.startsWith("image."))?.entity_id || null,
+        view: wanted?.find((w) => w.entity === e.entity_id)?.view,
       }));
     this._disks = disks;
     this._signature = "";
     this._render();
     this._loadPeople(true);
+  }
+
+  /** A cloud camera with a local stream (its password is set in the EZVIZ integration). */
+  _cloudLive(c) {
+    return (Number(this._hass.states[c.entity]?.attributes.supported_features) & 2) === 2;
+  }
+
+  /** What a cloud camera shows: "live" or "events" (last choice, else the card options). */
+  _cloudMode(c) {
+    if (!this._cloudLive(c)) return "events";
+    let mode = this._cloudModes?.[c.key];
+    if (!mode) {
+      try {
+        mode = window.localStorage.getItem(`ezviz-nvr-card:view:${c.entity}`);
+      } catch (err) {
+        mode = null;
+      }
+    }
+    mode = mode || c.view || this._config.cloud_view;
+    return mode === "live" ? "live" : "events";
+  }
+
+  _setCloudMode(c, mode) {
+    (this._cloudModes ??= {})[c.key] = mode;
+    try {
+      window.localStorage.setItem(`ezviz-nvr-card:view:${c.entity}`, mode);
+    } catch (err) {
+      /* private window: only kept for this page */
+    }
+  }
+
+  _cloudHead(cam) {
+    const t = this._t;
+    const mode = this._cloudMode(cam);
+    const seg = (m) => `<button data-cmode="${m}" class="${mode === m ? "on" : ""}">${esc(t[m])}</button>`;
+    return `<div class="head"><button class="back" data-back>‹ ${esc(t.back)}</button><b>${esc(this._cloudName(cam))}</b>
+        ${this._cloudLive(cam) ? `<div class="seg">${seg("live")}${seg("events")}</div>` : `<span class="tag inline">${esc(t.events)}</span>`}</div>`;
+  }
+
+  _cloudLiveView(cam) {
+    return `${this._cloudHead(cam)}
+      <div class="player"><div class="player-slot"></div><span class="badge live">● LIVE</span></div>`;
   }
 
   _cloudName(c) {
@@ -255,7 +312,10 @@ class EzvizNvrCard extends HTMLElement {
   }
 
   _playerView() {
-    if (this._view.startsWith("cloud:")) return this._eventsView();
+    if (this._view.startsWith("cloud:")) {
+      const cam = (this._cloud || []).find((c) => c.key === this._view);
+      return cam && this._cloudMode(cam) === "live" ? this._cloudLiveView(cam) : this._eventsView();
+    }
     const ch = this._channels.find((c) => c.key === this._view);
     if (!ch) return this._gridView();
     const t = this._t;
@@ -326,8 +386,7 @@ class EzvizNvrCard extends HTMLElement {
         .join("")}</div>`;
     const zoom = this._zoomEvent != null && data?.events?.[this._zoomEvent];
     return `
-      <div class="head"><button class="back" data-back>‹ ${esc(t.back)}</button><b>${esc(this._cloudName(cam))}</b>
-        <span class="tag inline">${esc(t.events)}</span></div>
+      ${this._cloudHead(cam)}
       <div class="timeline-head"><button data-day="-1">◀</button><span>${esc(isoDay(this._day))}</span><button data-day="1" ${today ? "disabled" : ""}>▶</button>
         <span class="spacer"></span><span class="hint">${data?.events ? data.events.length : ""}</span></div>
       ${body}
@@ -711,11 +770,20 @@ class EzvizNvrCard extends HTMLElement {
   /** The player is a stock picture-entity card in live view, kept across renders. */
   async _mountPlayer() {
     const slot = this.shadowRoot.querySelector(".player-slot");
-    if (!slot || this._view?.startsWith("cloud:")) return;
-    const ch = this._channels.find((c) => c.key === this._view);
-    const entity = this._mode === "live" ? ch.live : ch.playback;
-    const start = this._hass.states[ch.playback]?.attributes.playback_start;
-    const want = `${entity}|${this._mode === "playback" ? start : ""}`;
+    if (!slot) return;
+    let entity;
+    let want;
+    if (this._view?.startsWith("cloud:")) {
+      const cam = (this._cloud || []).find((c) => c.key === this._view);
+      if (!cam || this._cloudMode(cam) !== "live") return;
+      entity = cam.entity;
+      want = `${entity}|`;
+    } else {
+      const ch = this._channels.find((c) => c.key === this._view);
+      entity = this._mode === "live" ? ch.live : ch.playback;
+      const start = this._hass.states[ch.playback]?.attributes.playback_start;
+      want = `${entity}|${this._mode === "playback" ? start : ""}`;
+    }
     if (!this._player || this._playerKey !== want) {
       this._playerKey = want;
       const helpers = await window.loadCardHelpers();
@@ -851,6 +919,16 @@ class EzvizNvrCard extends HTMLElement {
     const back = root.querySelector("[data-back]");
     if (back) back.onclick = () => ((this._view = null), (this._player = null), (this._signature = ""), this._render());
     root.querySelectorAll("[data-mode]").forEach((b) => (b.onclick = () => ((this._mode = b.dataset.mode), (this._day = new Date()), this._render())));
+    root.querySelectorAll("[data-cmode]").forEach(
+      (b) =>
+        (b.onclick = () => {
+          const cam = (this._cloud || []).find((c) => c.key === this._view);
+          if (!cam) return;
+          this._setCloudMode(cam, b.dataset.cmode);
+          this._zoomEvent = null;
+          this._render();
+        })
+    );
     root.querySelectorAll("[data-day]").forEach(
       (b) =>
         (b.onclick = () => {
