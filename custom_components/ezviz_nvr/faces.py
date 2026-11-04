@@ -32,7 +32,7 @@ from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
-from .events import EZVIZ_DOMAIN, async_fetch_events, ezviz_client
+from .events import EZVIZ_DOMAIN, async_download_picture, async_fetch_events, ezviz_client
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -233,7 +233,7 @@ class FaceIndex:
         if not event.get("picture"):
             return 0
         try:
-            data = await self.hass.async_add_executor_job(client.download_alarm_image, event["picture"], serial)
+            data = await async_download_picture(self.hass, client, event["picture"], serial)
             if self._engine is None:
                 from .face_engine import FaceEngine
 

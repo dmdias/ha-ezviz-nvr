@@ -41,6 +41,30 @@ def ezviz_client(hass: HomeAssistant):
     return None
 
 
+def camera_key(hass: HomeAssistant, serial: str) -> str | None:
+    """Local password of a camera added to the EZVIZ integration (its picture key).
+
+    The cloud call that returns the key (get_cam_key) is refused for some
+    accounts (resultCode 10001), so the password typed for the camera in the
+    EZVIZ integration, which encrypts its pictures, is tried first.
+    """
+    for entry in hass.config_entries.async_entries(EZVIZ_DOMAIN):
+        if entry.data.get("type") == "CAMERA_ACCOUNT" and entry.unique_id == serial:
+            return entry.data.get("password") or None
+    return None
+
+
+async def async_download_picture(hass: HomeAssistant, client, url: str, serial: str | None) -> bytes:
+    """An event picture, decrypted with the camera password, else with the cloud key."""
+    key = camera_key(hass, serial) if serial else None
+    if key is not None:
+        try:
+            return await hass.async_add_executor_job(lambda: client.download_alarm_image(url, serial, encryption_key=key))
+        except Exception as err:  # noqa: BLE001 - the typed password may be outdated
+            _LOGGER.debug("Picture of %s not decrypted with the camera password: %s", serial, err)
+    return await hass.async_add_executor_job(lambda: client.download_alarm_image(url, serial))
+
+
 def camera_serial(hass: HomeAssistant, entity_id: str) -> str:
     """Serial of an EZVIZ camera entity (its unique id)."""
     entry = er.async_get(hass).async_get(entity_id)
@@ -214,7 +238,7 @@ class EventImageView(HomeAssistantView):
             if client is None:
                 return web.Response(status=503)
             try:
-                data = await self.hass.async_add_executor_job(lambda: client.download_alarm_image(url, serial or None))
+                data = await async_download_picture(self.hass, client, url, serial or None)
             except Exception as err:  # noqa: BLE001 - reported as a missing image
                 _LOGGER.debug("Event picture download failed: %s", err)
                 return web.Response(status=404)

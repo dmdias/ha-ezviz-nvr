@@ -7,6 +7,10 @@
   logged "Face scan failed" every 30 seconds. The next page is now asked with
   the time of the last event; if a later page still fails, the events already
   read are kept
+- Event pictures of the cloud cameras showed as broken when the EZVIZ cloud
+  refused to hand out the camera key (resultCode 10001). They are now
+  decrypted with the password typed for the camera in the EZVIZ integration,
+  and the cloud key is only asked when that fails (also for the face scan)
 - The dashboard card was lost after removing the NVR and adding it again
   without restarting Home Assistant; it is now registered on every setup
 
