@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.7
+
+- Cloud camera events with more than one page (over 50 events in a day) failed
+  with "400 Bad Request", so the event list did not open and the face scan
+  logged "Face scan failed" every 30 seconds. The next page is now asked with
+  the time of the last event; if a later page still fails, the events already
+  read are kept
+- The dashboard card was lost after removing the NVR and adding it again
+  without restarting Home Assistant; it is now registered on every setup
+
 ## 0.4.6
 
 - Zoom on the open pictures (events and face occurrences): pinch, mouse

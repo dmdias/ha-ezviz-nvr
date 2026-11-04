@@ -77,7 +77,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         # The URL changes with the file, so browsers never keep an old card
         mtime = await hass.async_add_executor_job(lambda: int(CARD_FILE.stat().st_mtime))
         hass.data[f"{DOMAIN}_frontend"] = f"{FRONTEND_URL}?v={VERSION}-{mtime}"
-        await async_register_card(hass, FRONTEND_URL, hass.data[f"{DOMAIN}_frontend"])
+    # Always (re)register: removing the last NVR unregisters the card, and an
+    # NVR added again in the same run must bring it back
+    await async_register_card(hass, FRONTEND_URL, hass.data[f"{DOMAIN}_frontend"])
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(_async_reload))

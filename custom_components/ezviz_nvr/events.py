@@ -138,7 +138,11 @@ def parse_events(payload: Any) -> tuple[list[dict[str, Any]], str | None]:
                 "picture": _picture(flat),
             }
         )
-        cursor = str(msg_id) if msg_id is not None else cursor
+        # The next page starts before the epoch-ms "time" of the last message
+        # (the API answers 400 Bad Request when given its msgId)
+        stamp = flat.get("time")
+        if isinstance(stamp, (int, float)) or (isinstance(stamp, str) and stamp.isdigit()):
+            cursor = str(int(stamp))
     return events, cursor
 
 
@@ -160,9 +164,15 @@ async def async_fetch_events(hass: HomeAssistant, client, serial: str, day: date
     events: list[dict[str, Any]] = []
     cursor = ""
     while len(events) < limit:
-        payload = await hass.async_add_executor_job(
-            lambda c=cursor: client.get_device_messages_list(serials=serial, limit=min(50, limit - len(events)), date=day, end_time=c)
-        )
+        try:
+            payload = await hass.async_add_executor_job(
+                lambda c=cursor: client.get_device_messages_list(serials=serial, limit=min(50, limit - len(events)), date=day, end_time=c)
+            )
+        except Exception as err:  # noqa: BLE001 - keep the pages already read
+            if not events:
+                raise
+            _LOGGER.debug("EZVIZ events: next page failed, returning %s events (%s)", len(events), err)
+            break
         page, last = parse_events(payload)
         new = [e for e in page if e["id"] not in {x["id"] for x in events}]
         if not new:
