@@ -20,6 +20,9 @@
  * Cloud cameras with a local stream (added with their password to the EZVIZ
  * integration) get Live / Events buttons; the last choice is remembered.
  *
+ * "Reorder" (administrators) changes the order of the cameras in the grid; it
+ * is saved in Home Assistant, so every browser and phone shows the same order.
+ *
  * With face recognition on (integration options), a "People" view lists who
  * the cloud cameras saw, with every occurrence, and lets you name each person.
  */
@@ -40,6 +43,7 @@ const TEXT = {
     save: "Guardar", delete_person: "Apagar pessoa", confirm_delete: "Apagar esta pessoa e todas as suas caras?", not_this: "Não é esta pessoa? Mover para:",
     move: "Mover", remove_face: "Remover cara", with: "com", merged: "Juntou-se à pessoa com o mesmo nome.", all: "Todas", named: "Com nome",
     close: "Fechar", zoom_hint: "Pinça, roda do rato ou duplo toque para ampliar",
+    sort: "Ordenar", done: "Concluído", sort_hint: "Usa ◀ ▶ para mudar a posição de cada câmara.", earlier: "Mais à frente", later: "Mais atrás",
   },
   en: {
     live: "Live", playback: "Playback", back: "Cameras", offline: "Offline", disk: "Disk", events: "Events",
@@ -53,6 +57,7 @@ const TEXT = {
     save: "Save", delete_person: "Delete person", confirm_delete: "Delete this person and all their faces?", not_this: "Not this person? Move to:",
     move: "Move", remove_face: "Remove face", with: "with", merged: "Merged with the person of the same name.", all: "All", named: "Named",
     close: "Close", zoom_hint: "Pinch, scroll or double-tap to zoom",
+    sort: "Reorder", done: "Done", sort_hint: "Use ◀ ▶ to move each camera.", earlier: "Move earlier", later: "Move later",
   },
 };
 
@@ -171,6 +176,11 @@ class EzvizNvrCard extends HTMLElement {
         view: wanted?.find((w) => w.entity === e.entity_id)?.view,
       }));
     this._disks = disks;
+    try {
+      this._order = (await this._hass.callWS({ type: "ezviz_nvr/layout/get" })).order || [];
+    } catch (err) {
+      this._order = [];
+    }
     this._signature = "";
     this._render();
     this._loadPeople(true);
@@ -284,31 +294,60 @@ class EzvizNvrCard extends HTMLElement {
       <span>${Math.round(used)}%${Number.isFinite(free) ? ` · ${Math.round(free)} GB` : ""}</span></div>`;
   }
 
+  /** Grid tiles (NVR channels, then cloud cameras), in the saved order. */
+  _tiles() {
+    const nvr = this._channels.map((ch) => {
+      const st = this._hass.states[ch.live];
+      const offline = !st || st.state === "unavailable";
+      return {
+        key: ch.key,
+        name: this._name(ch),
+        inner: `${offline ? `<div class="snap off">${esc(this._t.offline)}</div>` : `<img class="snap" src="${esc(this._picture(ch.live))}" alt="">`}
+          <div class="tile-bar"><span class="dot ${offline ? "" : "on"}"></span>${esc(this._name(ch))}</div>`,
+      };
+    });
+    const cloud = (this._cloud || []).map((c) => {
+      const st = this._hass.states[c.entity];
+      const offline = !st || st.state === "unavailable";
+      const pic = c.image ? this._hass.states[c.image]?.attributes.entity_picture : null;
+      return {
+        key: c.key,
+        name: this._cloudName(c),
+        inner: `${pic ? `<img class="snap" src="${esc(pic)}" alt="">` : `<div class="snap off">${esc(this._t.no_picture)}</div>`}
+          <span class="tag">${esc(this._t.cloud)}</span>
+          <div class="tile-bar"><span class="dot ${offline ? "" : "on"}"></span>${esc(this._cloudName(c))}</div>`,
+      };
+    });
+    const all = nvr.concat(cloud);
+    const order = this._sorting || this._order || [];
+    const rank = (k) => {
+      const i = order.indexOf(k);
+      return i < 0 ? order.length + all.findIndex((x) => x.key === k) : i;
+    };
+    return all.sort((a, b) => rank(a.key) - rank(b.key));
+  }
+
   _gridView() {
     const cols = Number(this._config.columns) || 2;
-    const tiles = this._channels
-      .map((ch) => {
-        const st = this._hass.states[ch.live];
-        const offline = !st || st.state === "unavailable";
-        return `<button class="tile" data-open="${esc(ch.key)}">
-          ${offline ? `<div class="snap off">${esc(this._t.offline)}</div>` : `<img class="snap" src="${esc(this._picture(ch.live))}" alt="">`}
-          <div class="tile-bar"><span class="dot ${offline ? "" : "on"}"></span>${esc(this._name(ch))}</div></button>`;
-      })
+    const t = this._t;
+    const list = this._tiles();
+    const sorting = !!this._sorting;
+    const tiles = list
+      .map((x, i) =>
+        sorting
+          ? `<div class="tile sorting">${x.inner}
+              <div class="sort-bar"><button data-move="${i}" data-dir="-1" ${i === 0 ? "disabled" : ""} title="${esc(t.earlier)}">◀</button>
+              <span>${i + 1}</span><button data-move="${i}" data-dir="1" ${i === list.length - 1 ? "disabled" : ""} title="${esc(t.later)}">▶</button></div></div>`
+          : `<button class="tile" data-open="${esc(x.key)}">${x.inner}</button>`
+      )
       .join("");
-    const cloudTiles = (this._cloud || [])
-      .map((c) => {
-        const st = this._hass.states[c.entity];
-        const offline = !st || st.state === "unavailable";
-        const pic = c.image ? this._hass.states[c.image]?.attributes.entity_picture : null;
-        return `<button class="tile" data-open="${esc(c.key)}">
-          ${pic ? `<img class="snap" src="${esc(pic)}" alt="">` : `<div class="snap off">${esc(this._t.no_picture)}</div>`}
-          <span class="tag">${esc(this._t.cloud)}</span>
-          <div class="tile-bar"><span class="dot ${offline ? "" : "on"}"></span>${esc(this._cloudName(c))}</div></button>`;
-      })
-      .join("");
-    const people = this._people ? `<button class="back" data-people>👤 ${esc(this._t.people)}${this._people.people.length ? ` · ${this._people.people.length}` : ""}</button>` : "";
-    return `<div class="head"><b>EZVIZ NVR</b>${people}${this._diskBar()}</div>
-      <div class="grid" style="--cols:${cols}">${tiles}${cloudTiles}</div>`;
+    const people = this._people && !sorting ? `<button class="back" data-people>👤 ${esc(t.people)}${this._people.people.length ? ` · ${this._people.people.length}` : ""}</button>` : "";
+    const sort = this._hass.user?.is_admin
+      ? `<button class="back${sorting ? " on" : ""}" data-sort>${sorting ? `✓ ${esc(t.done)}` : `↕ ${esc(t.sort)}`}</button>`
+      : "";
+    return `<div class="head"><b>EZVIZ NVR</b>${people}${sort}${this._diskBar()}</div>
+      ${sorting ? `<div class="hint">${esc(t.sort_hint)}</div>` : ""}
+      <div class="grid" style="--cols:${cols}">${tiles}</div>`;
   }
 
   _playerView() {
@@ -919,6 +958,35 @@ class EzvizNvrCard extends HTMLElement {
     const back = root.querySelector("[data-back]");
     if (back) back.onclick = () => ((this._view = null), (this._player = null), (this._signature = ""), this._render());
     root.querySelectorAll("[data-mode]").forEach((b) => (b.onclick = () => ((this._mode = b.dataset.mode), (this._day = new Date()), this._render())));
+    const sortBtn = root.querySelector("[data-sort]");
+    if (sortBtn)
+      sortBtn.onclick = async () => {
+        if (!this._sorting) {
+          this._sorting = this._tiles().map((x) => x.key);
+          this._render();
+          return;
+        }
+        const order = this._sorting;
+        this._sorting = null;
+        this._order = order;
+        this._render();
+        try {
+          this._order = (await this._hass.callWS({ type: "ezviz_nvr/layout/set", order })).order;
+        } catch (err) {
+          /* kept for this page only */
+        }
+      };
+    root.querySelectorAll("[data-move]").forEach(
+      (b) =>
+        (b.onclick = () => {
+          const i = Number(b.dataset.move);
+          const j = i + Number(b.dataset.dir);
+          const list = this._sorting;
+          if (!list || j < 0 || j >= list.length) return;
+          [list[i], list[j]] = [list[j], list[i]];
+          this._render();
+        })
+    );
     root.querySelectorAll("[data-cmode]").forEach(
       (b) =>
         (b.onclick = () => {
@@ -995,6 +1063,12 @@ const STYLES = `
   /* Up to --cols columns, each at least ~260px wide: tiles wrap instead of shrinking */
   .grid { display:grid; gap:10px; grid-template-columns:repeat(auto-fill, minmax(max(260px, calc((100% - (var(--cols) - 1) * 10px) / var(--cols))), 1fr)); }
   @media (max-width: 600px) { .grid { grid-template-columns:1fr; } ha-card { padding:10px; } .head { gap:8px; } .disk { margin-left:0; width:100%; } }
+  .tile.sorting { cursor:default; outline:2px dashed #6fd8c0; outline-offset:-2px; }
+  .sort-bar { position:absolute; top:8px; left:8px; display:flex; align-items:center; gap:6px; background:rgba(0,0,0,.6); border-radius:10px; padding:4px; color:#fff; font-size:14px; }
+  .sort-bar button { background:#3a4359; color:#fff; border:none; border-radius:8px; width:36px; height:32px; font-size:15px; cursor:pointer; }
+  .sort-bar button:disabled { opacity:.35; cursor:default; }
+  .sort-bar span { min-width:18px; text-align:center; font-weight:600; }
+  .back.on { background:#3a4359; outline:1px solid #6fd8c0; }
   .tile { position:relative; padding:0; border:none; border-radius:12px; overflow:hidden; background:var(--panel); cursor:pointer; color:var(--text); font-family:inherit; aspect-ratio:16/9; }
   .snap { width:100%; height:100%; object-fit:cover; display:block; }
   .snap.off { display:flex; align-items:center; justify-content:center; color:var(--muted); font-size:14px; }

@@ -129,6 +129,9 @@ It looks best in a view of type **Panel**.
 
 - **Grid**: every channel with a thumbnail, refreshed every 30 seconds, and
   its online state. The NVR disk usage is shown at the top.
+- **↕ Reorder** (administrators): move each camera with **◀ ▶**, then
+  **✓ Done**. The order is saved in Home Assistant, so every browser and
+  phone shows the cameras in the same order. New cameras go to the end.
 - **Tap a camera**: live video.
 - **Playback tab**:
   - Recorded segments of the day are shown in blue on a 24-hour timeline.

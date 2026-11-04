@@ -17,6 +17,7 @@ from .const import CONF_FACES, CONF_FACES_RETENTION, CONF_RTSP_PORT, DOMAIN, FRO
 from .coordinator import NvrCoordinator
 from .events import EventImageView, async_get_events
 from .faces import FaceIndex, FacePictureView, async_register_websocket
+from .layout import async_register_layout
 
 PLATFORMS = [Platform.CAMERA, Platform.SENSOR]
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
@@ -37,6 +38,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     hass.http.register_view(EventImageView(hass))
     hass.http.register_view(FacePictureView(hass))
     async_register_websocket(hass, lambda: hass.data.get(FACES))
+    async_register_layout(hass)
 
     async def handle_get_events(call: ServiceCall) -> ServiceResponse:
         return await async_get_events(hass, call.data["entity_id"], call.data.get("date"), call.data["limit"])

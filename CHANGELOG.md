@@ -2,6 +2,9 @@
 
 ## 0.4.7
 
+- **↕ Reorder** button in the card (administrators) to choose the order of
+  the cameras in the grid, NVR channels and cloud cameras mixed. The order is
+  saved in Home Assistant and shared by every browser and phone
 - Cloud cameras with a local stream get **Live / Events** buttons in the card.
   The first view is set with `cloud_view` (`events` or `live`) or per camera
   (`cloud_cameras: [{entity: camera.x, view: live}]`), and the last choice is
